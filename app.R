@@ -1,3 +1,4 @@
+#syndrome gestalts w/age flexibility
 library(shiny)
 library(Morpho)
 # library(geomorph)
@@ -9,219 +10,170 @@ library(visNetwork)
 library(plotly)
 library(ggrepel)
 
-
-# load("/srv/shiny-server/data_segmented.Rdata")
-load("~/shiny/shinyapps/Syndrome_gestalts/data_segmented.Rdata")
-
-#define new morpho plotting method until he releases it on cran
-
-#' render <- function(x,...) UseMethod("render")
-#' 
-#' #' @rdname render
-#' #' @method render meshDist
-#' #' @export
-#' render.meshDist <- function(x,from=NULL,to=NULL,steps=NULL,ceiling=NULL,uprange=NULL,tol=NULL,tolcol=NULL,rampcolors=NULL,NAcol=NULL,displace=FALSE,shade=TRUE,sign=NULL,add=FALSE,scaleramp=NULL,...) {
-#'   clost <- x$clost
-#'   dists <- x$dists
-#'   distsOrig <- dists
-#'   colorall <- x$cols
-#'   colramp <- x$colramp
-#'   params <- x$params
-#'   distqual <- x$distqual
-#'   if (!is.null(tolcol))
-#'     tolcol <- colorRampPalette(tolcol)(1)
-#'   if (!add) {
-#'     if (rgl.cur() !=0)
-#'       rgl.clear()
-#'   }
-#'   if (!is.null(from) || !is.null(to) || !is.null(uprange) ||  !is.null(tol)  ||  !is.null(sign) || !is.null(steps) || !is.null(rampcolors) || !is.null(NAcol) || !is.null(tolcol) || !is.null(scaleramp)) {
-#'     neg=FALSE
-#'     colMesh <- x$colMesh
-#'     if(is.null(steps))
-#'       steps <- x$params$steps
-#'     if (is.null(rampcolors))
-#'       rampcolors <- x$params$rampcolors
-#'     if (is.null(NAcol))
-#'       NAcol <- x$params$NAcol
-#'     if (is.null(tolcol))
-#'       tolcol <- x$params$tolcol
-#'     if (is.null(tol))
-#'       tol <- x$params$tol
-#'     if(is.null(sign))
-#'       sign <- x$params$sign
-#'     if (!sign) {
-#'       distsOrig <- dists
-#'       dists <- abs(dists)
-#'     }
-#'     if(is.null(ceiling))
-#'       ceiling <- x$params$ceiling
-#'     if(is.null(uprange))
-#'       uprange <- x$params$uprange
-#' 
-#'     if (is.null(from)) {
-#'       mindist <- min(dists)
-#'       if (sign && mindist < 0 ) {
-#'         from <- quantile(dists,probs=(1-uprange))
-#'         neg <- TRUE
-#'       } else {
-#'         from <- 0
-#'       }
-#'     }
-#'     if (is.null(scaleramp))
-#'       scaleramp <- x$params$scaleramp
-#' 
-#'     if (from < 0)
-#'       neg <- TRUE
-#'     if (is.null(to))
-#'       to <- quantile(dists,probs=uprange)
-#'     if(ceiling)
-#'       to <- ceiling(to)
-#' 
-#'     to <- to+1e-10
-#'     #ramp <- blue2green2red(maxseq*2)
-#'     ramp <- colorRampPalette(rampcolors)(steps-1)
-#'     colseq <- seq(from=from,to=to,length.out=steps)
-#'     coldif <- colseq[2]-colseq[1]
-#'     if (neg && sign) {
-#' 
-#'       negseq <- length(which(colseq<0))
-#'       poseq <- steps-negseq
-#'       maxseq <- max(c(negseq,poseq))
-#'       if (scaleramp) {
-#'         ramp <- colorRampPalette(rampcolors)(maxseq*2)
-#'         ramp <- ramp[c(maxseq-negseq+1):(maxseq+poseq)]
-#' 
-#'       }
-#'       else
-#'         ramp <- colorRampPalette(rampcolors)(steps-1)
-#'       distqual <- ceiling(((dists+abs(from))/coldif)+1e-14)
-#'       #distqual[which(distqual < 1)] <- steps+10
-#'     } else if (from > 0) {
-#'       distqual <- ceiling(((dists-from)/coldif)+1e-14)
-#'     } else {
-#'       distqual <- ceiling((dists/coldif)+1e-14)
-#'     }
-#'     distqual[which(distqual < 1)] <- steps+10
-#'     colorall <- ramp[distqual]
-#'     if (!is.null(tol)) {
-#'       if ( length(tol) < 2 ) {
-#'         if (sign) {
-#'           tol <- c(-tol,tol)
-#'         } else {
-#'           tol <- c(0,tol)
-#'         }
-#'       }
-#'       good <- which(abs(dists) < tol[2])
-#'       colorall[good] <- tolcol
-#'     }
-#'     colfun <- function(x){x <- colorall[x];return(x)}
-#'     colMesh$material$color <- matrix(colfun(colMesh$it),dim(colMesh$it))
-#'     colMesh$material$color[is.na(colMesh$material$color)] <- NAcol
-#'     #colMesh$material$color <- matrix(colfun(colMesh$it),dim(colMesh$it))
-#'     colramp <- list(1,colseq, matrix(data=colseq, ncol=length(colseq),nrow=1),col=ramp,useRaster=T,ylab="Distance in mm",xlab="",xaxt="n")
-#'   } else {
-#'     if (is.null(tol))
-#'       tol <- x$params$tol
-#'     colramp <- x$colramp
-#'     colMesh <- x$colMesh
-#'   }
-#'   if (is.null(tolcol))
-#'     tolcol <- x$params$tolcol
-#' 
-#'   if (shade)
-#'     shade3d(vcgUpdateNormals(colMesh),specular="black",meshColor="legacy",...)
-#'   if (displace) {
-#'     dismesh <- colMesh
-#'     vl <- dim(colMesh$vb)[2]
-#'     dismesh$vb <- cbind(colMesh$vb,rbind(clost,1))
-#'     dismesh$it <- rbind(1:vl,1:vl,(1:vl)+vl)
-#'     dismesh$material$color <- rbind(colorall,colorall,colorall)
-#'     wire3d(dismesh,lit=FALSE,meshColor="legacy")
-#'   }
-#'   diffo <- ((colramp[[2]][2]-colramp[[2]][1])/2)
-#'   image(colramp[[1]],colramp[[2]][-1]-diffo,t(colramp[[3]][1,-1])-diffo,col=colramp[[4]],useRaster=TRUE,ylab="Distance in mm",xlab="",xaxt="n")
-#'   if (!is.null(tol)) {
-#'     if (sum(abs(tol)) != 0)
-#'       image(colramp[[1]],c(tol[1],tol[2]),matrix(c(tol[1],tol[2]),1,1),col=tolcol,useRaster=TRUE,add=TRUE)
-#'   }
-#'   params <- list(steps=steps,from=from,to=to,uprange=uprange,ceiling=ceiling,sign=sign,tol=tol,rampcolors=rampcolors,NAcol=NAcol,tolcol=tolcol)
-#'   out <- list(colMesh=colMesh,dists=distsOrig,cols=colorall,colramp=colramp,params=params,distqual=distqual,clost=clost)
-#' 
-#'   class(out) <- "meshDist"
-#'   invisible(out)
-#' }
+# meta.lm, d.registered
+ setwd("~/shiny/shinyapps/Syndrome_model/")
+ # setwd("/srv/shiny-server/testing_ground/")
+# save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, file = "data.Rdata")
+ load("data.Rdata")
+ # eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
+ 
+ # load("~/shiny/shinyapps/Syndrome_model copy/FB2_texture_PCA.Rdata")
+ 
+ predshape.lm <- function(fit, datamod, PC, mshape){
+   dims <- dim(mshape)
+   mat <- model.matrix(datamod)
+   pred <- mat %*% fit
+   names <- as.matrix(model.frame(datamod))
+   names <- apply(names, 1, paste, collapse = "_")
+   names <- gsub(" ", "", names)
+   predPC <- t(PC %*% t(pred))
+   out <- mshape + matrix(predPC, dims[1], dims[2])
+   # dimnames(out)[[3]] <- names
+   # rownames(pred) <- names
+   return(out)
+ }
+ 
+ predtexture.lm <- function(fit, datamod, PC, mshape){
+   dims <- dim(mshape)
+   mat <- model.matrix(datamod)
+   pred <- mat %*% fit
+   names <- as.matrix(model.frame(datamod))
+   names <- apply(names, 1, paste, collapse = "_")
+   names <- gsub(" ", "", names)
+   predPC <- t(PC %*% t(pred))
+   out <- mshape + predPC
+   
+   # dimnames(out)[[3]] <- names
+   # rownames(pred) <- names
+   return(out)
+ }
 
 ui <- fluidPage(
   
   titlePanel(""),
   sidebarLayout(
     sidebarPanel(
-      selectInput("reference", label = "Reference", choices = sort(synd.names), selected = "Control"),
-      selectInput("synd", label = "Syndrome", choices = sort(synd.names), selected = sample(synd.names, 1)),
-      sliderInput("transparency", label = "Mesh transparency", min = 0, max = 1, step = .1, value = .3),
-      # sliderInput("module", label = "Module", min = 1, max = 63, step = 1, value = 1),
-      checkboxInput("displace", label = "Plot vectors?", value = T),
-      # checkboxInput("variance", label = "Show syndrome heterogeneity?", value = F),
-      submitButton("Update", icon("refresh")),
+      conditionalPanel(condition = "input.Atlas_tabs=='Gestalt'",
+                       selectInput("synd", label = "Syndrome", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Costello Syndrome"),
+                       selectInput("sex", label = "Sex", choices = c("Female", "Male")),
+      # sliderInput("age", label = "Age", min = 1, max = 50, step = 1, value = 12),
+                      uiOutput("age_slider"),
+                      uiOutput("severity_slider"),
+                      actionButton("Update", "Update Gestalt", icon("refresh"))),
+      conditionalPanel(condition = "input.Atlas_tabs=='Comparisons'",
+                      selectInput("reference", label = "Reference", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Unaffected Unrelated"),
+                      selectInput("synd_comp", label = "Syndrome", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Costello Syndrome"),
+                      selectInput("sex", label = "Sex", choices = c("Female", "Male")),
+                      # uiOutput("age_slider"),
+                      sliderInput("transparency", label = "Mesh transparency", min = 0, max = 1, step = .1, value = 1),
+                      checkboxInput("displace", label = "Plot vectors?", value = F)),
       width = 3, 
       tags$head(
-        tags$style("body {background-color: #1a1a1a; }
-                   .well {background-color: #404040;}
-                   .control-label {color: white}
-                   .irs-min, .irs-max {color: white}
-                   .checkbox {color: white}
-                   .nav-tabs > li > a {
-    background-color: transparent;
-    color: black;
-  }
-  
-  .nav-tabs > li > a:hover {
-    background-color: #a6192e;
-    border-color: transparent;
-    color: white;
-  }
-       
-  .tabbable > .nav > li[class=active] > a {
-    background-color: #a6192e; 
-    color:white;
-    border-color: transparent;
-  }
-    
-      .skin-blue .main-header .navbar {
-    background-color: white;
-    border-bottom: 1px solid #ddd;
-      }
-  
-  div.vis-network{
-  background-color: white; #1a1a1a
-  } 
-                   ")
+        tags$link(rel = "stylesheet", type = "text/css", href = "style.css")
       )
     ),
     
     mainPanel(
-      tabsetPanel(#img(src='uc_logo.jpg', align = "right", height = 70 * 1.15, width = 90 * 1.25),
-        tabPanel("Gestalt", HTML("<center><font style=\"color: red; font-size: xx-large;\"> Bigger </font><font style=\"color: white; font-size: xx-large;\"> | </font><font style=\"color: lightgreen; font-size: xx-large;\"> Similar </font><font style=\"color: white; font-size: xx-large;\"> | </font><font style=\"color: blue; font-size: xx-large;\"> Smaller </font></center>"),
-                 withSpinner(rglwidgetOutput("gestalt", width = "75vw", height="95vh"), type = 6, color = "#fca311")),
-        tabPanel("Segments", br(), HTML("<p style=\"color:white;\"><b>Select a facial partition using the dropdown menu or by clicking the bubbles directly</b></p>"), visNetworkOutput("network", height="95vh")),
-        tabPanel("Morphospace", br(), plotOutput("morphospace")),
-        tabPanel("About", br(), HTML("<p style=\"color:white;\"><b>This app aims to help clinical geneticists better understand the characteristic craniofacial features of various genetic syndromes. There are 3 sections to this app and here is my description of how they work. Here are the people that made this app possible.</b></p>"))#, 
-                 #includeHTML("~/shiny/shinyapps/Syndrome_gestalts/about_test.html"), 
-                 #includeCSS("~/shiny/shinyapps/Syndrome_gestalts/test.css"))
+      tabsetPanel(id = "Atlas_tabs",#img(src='uc_logo.jpg', align = "right", height = 70 * 1.15, width = 90 * 1.25),
+        tabPanel("Gestalt", br(),
+                 withSpinner(rglwidgetOutput("gestalt", width = "65vw", height="80vh"), type = 6, color = "#fca311")),
+        tabPanel("Comparisons", br(),
+                 withSpinner(rglwidgetOutput("comparison", width = "65vw", height="80vh"), type = 6, color = "#fca311"),
+                 br(),
+                 HTML("<center><font style=\"color: red; font-size: xx-large;\"> Bigger </font><font style=\"color: #fcfcfc; font-size: xx-large;\"> | </font><font style=\"color: lightgreen; font-size: xx-large;\"> Similar </font><font style=\"color: #fcfcfc; font-size: xx-large;\"> | </font><font style=\"color: blue; font-size: xx-large;\"> Smaller </font></center>"),
+                 br(), plotOutput("morphospace")),
+        tabPanel("Segments", br(), HTML("<p style=\"color:black;\">Select a facial partition using the dropdown menu or by clicking the bubbles directly. Functionality is currently broken.</p>"), 
+                 visNetworkOutput("network", height="80vh")),
+        # tabPanel("Morphospace", br(), plotOutput("morphospace")),
+        tabPanel("About", br(), HTML("<p style=\"color:black;\">This app aims to help clinical geneticists better understand the characteristic craniofacial features of various genetic syndromes. There are 3 sections to this app and here is my description of how they work. Here are the people that made this app possible.</p>"))#, 
+        #includeHTML("~/shiny/shinyapps/Syndrome_gestalts/about_test.html"), 
+        #includeCSS("~/shiny/shinyapps/Syndrome_gestalts/test.css"))
         
       )
     )
   )
 )
-   
+
 
 server <- function(input, output) {
-
-  # observe({
-  #   if(input$variance > 0){
-  #     updateCheckboxInput(session, "displace", label = "Plot vectors?", value = F)
-  #   }
-  # })
+  # atlas <- file2mesh("whoami.ply", readcol = T)
+  
+  # atlas <- file2mesh("whoami2.ply", readcol = T)
+  pred.mesh <- atlas 
+  pred.mesh2 <- atlas
+  # texture.coefs <- lm(texture.pca$x[,1:2000] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
+  # synd.lm.coefs <- lm(PC.scores ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
+  
+  #process reactive####
+  outVar <- reactive({
+    #get selected syndrome age range
+    age.range <- d.meta.combined$Age[d.meta.combined$Syndrome == input$synd]
+    
+    #calculate syndrome severity scores for selected syndrome
+    #calculate score for the main effect
+    S <- synd.lm.coefs[grepl(pattern = input$synd, rownames(synd.lm.coefs)),][1,]
+    Snorm <- S/sqrt(sum(S^2))
+    syndscores.main <- PC.scores %*% Snorm
+    
+    return(list(age.range, syndscores.main[d.meta.combined$Syndrome == input$synd]))
+  }) 
+  
+  doutVar <- outVar#debounce(outVar, 2000)
+  
+  output$age_slider <- renderUI({
+    sliderInput('dynamic_age', 'Age', min = if(min(na.omit(doutVar()[[1]])) < 1){1} else{round(min(na.omit(doutVar()[[1]])))}, max = round(max(na.omit(doutVar()[[1]]))), value = 12)
+    #Diagnostic slider: sliderInput('dynamic_age', 'Age', min = 1, max = 25, value = 12)
+  })
+  
+  output$severity_slider<- renderUI({
+  syndscores.main <- doutVar()[[2]]  
+  #what's the current synd age range
+  # age.range <- doutVar()[[1]]
+  #filter to scores for only nearby age ranges
+  # syndscores.main <- syndscores.main[age.range > (input$dynamic_age - 5) & age.range < (input$dynamic_age + 5)]
+  sliderInput("severity", label = "Syndrome severity", min = round(-1*sd(syndscores.main), 2), max = round(1*sd(syndscores.main), 2), step = round(diff(range(syndscores.main))/10, 2), value = 0) 
+  })
+  
+  debounced.inputs <- reactive({
+    return(list(input$dynamic_age, input$severity))
+  }) %>% debounce(2000)
+  
+  
+  pred.synd <- eventReactive(input$Update, {
+    selected.synd <- factor(input$synd, levels = levels(d.meta.combined$Syndrome))
+    if(input$sex == "Female"){selected.sex <-1
+    } else if(input$sex == "Male"){selected.sex <- 0} 
+    # selected.age <- input$age
+    
+    if(is.null(debounced.inputs()[[1]])){ selected.age <- 12 } else{
+      selected.age <- debounced.inputs()[[1]]
+    }
+    
+    # if(is.null(debounced.inputs()[[2]])){ selected.severity <- 0} else{
+    selected.severity <- debounced.inputs()[[2]]
+    # }
+    # synd.lm.coefs.severity <- synd.lm.coefs
+    #old severity code: synd.lm.coefs.severity[grepl(pattern = input$synd, rownames(synd.lm.coefs)),] <- synd.lm.coefs.severity[grepl(pattern = input$synd, rownames(synd.lm.coefs)),] + (input$severity/100) * synd.lm.coefs.severity[grepl(pattern = input$synd, rownames(synd.lm.coefs)),]
+    datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    # S <- synd.lm.coefs[grepl(pattern = selected.synd, rownames(synd.lm.coefs)),][1,]
+    # Snorm <- S/sqrt(sum(S^2))
+    # syndscores.main <- PC.scores %*% Snorm
+    # 
+    # #solve for max in min syndromic severities
+    # 
+    # #if the mean is higher for the selected syndrome, then max is max
+    # meanscore.ns <- mean(syndscores.main[d.meta.combined$Syndrome == "Unaffected Unrelated"])
+    # meanscore.synd <- mean(syndscores.main[d.meta.combined$Syndrome == selected.synd])
+    # 
+    # 
+    
+    return(list(predicted.shape, selected.synd, selected.age, selected.severity))
+    
+  })
+  
+  
   
   #module selection####
   output$network <- renderVisNetwork({
@@ -233,10 +185,11 @@ server <- function(input, output) {
     # nodes <- data.frame(id = 1:31, label = 1:31, shape = "image", image = "https://genopheno.ucalgary.ca/presentations/Child_health_data_science_Aponte/images/atlas.png", value = c(rep(10,21), rep(5,10)))
     # edges <- data.frame(from = rep(1:15, each = 2), to = 2:31)#c(2,3,4,5,6,7,8,9,10,11,12,13,14,15))
     # 15 modules
-    path_to_images <- "https://genopheno.ucalgary.ca/presentations/Child_health_data_science_Aponte/mod_images/"
-    module.names <- c("Whole face", "Maxilla/Nose", "Mandible/Sphenoid/Frontal", "Upper lip", "Nasal/Maxilla subset", "Cheek/Mandible", "Sphenoid/Frontal", "Nasolabial", "Philtrum", "Lateral Nasal", "Nose", "Cheek", "Chin/Mandible", "Frontal", "Orbital/Temporal/Sphenoid")
-    nodes <- data.frame(id = 1:15, label = module.names, title = module.names, shape = "circularImage", color = "#fca311", color.highlight = "#fca311", image = paste0(path_to_images, "mod", 1:15, ".png"))#, value = c(rep(130,7), rep(130,8)))
-    edges <- data.frame(from = rep(1:7, each = 2), to = 2:15)
+    path_to_images <- "https://raw.githubusercontent.com/J0vid/Syndrome_atlas/master/mod_images/" #"https://genopheno.ucalgary.ca/presentations/Child_health_data_science_Aponte/mod_images/"
+    module.names <- c("Whole face", "Nose", "Mandible/Sphenoid/Frontal", "Upper lip", "Nasal/Maxilla subset", "Cheek/Mandible", "Sphenoid/Frontal", "Nasolabial", "Philtrum", "Lateral Nasal", "Nose", "Cheek", "Chin/Mandible", "Frontal", "Orbital/Temporal/Sphenoid")
+    module.names[1:8] <- c("Whole Face", "Nose", "Eyes", "Jaw", "Chin", "Mouth", "Cheeks", "Forehead")
+    nodes <- data.frame(id = 1:8, label = module.names[1:8], title = module.names[1:8], shape = "circularImage", color = "#fca311", color.highlight = "#fca311", image = paste0(path_to_images, "mod", 1:8, ".png"))#, value = c(rep(130,7), rep(130,8)))
+    edges <- data.frame(from = 1, to = 2:8)
     
     visNetwork(nodes, edges)  %>%
       visInteraction(hover = F,
@@ -245,7 +198,7 @@ server <- function(input, output) {
       visOptions(nodesIdSelection = list(enabled = TRUE, 
                                          selected = "1"),
                  highlightNearest = F
-                 ) %>% 
+      ) %>% 
       visNodes(size = 50,
                shapeProperties = list(useBorderWithImage = TRUE),
                borderWidthSelected = 7,
@@ -258,9 +211,8 @@ server <- function(input, output) {
       visEvents(type = "once", startStabilizing = "function() {
             this.moveTo({scale:1.15})}") %>%
       visPhysics(stabilization = FALSE) %>%
-      visLayout(randomSeed = 12)
-    # visHierarchicalLayout()
-  
+      visLayout(randomSeed = 12)# %>%
+      #visHierarchicalLayout()
     
   })
   
@@ -269,104 +221,265 @@ server <- function(input, output) {
     paste("Current node selection : ", input$network_selected)
   })
   
+  
+  syndrome_comps <- reactive({
+    
+    selected.sex <- 1.5
+    selected.age <- 10
+    
+    selected.synd <- factor(input$synd_comp, levels = levels(d.meta.combined$Syndrome))
+    
+    # datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    
+    # predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    #synd
+    pred.mesh$vb[-4,] <-  t(synd.mat[,,unique(d.meta.combined$Syndrome) == input$synd_comp])
+    rigid.points <- sample(1:27000, 100)
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), t(atlas$vb[1:3,rigid.points]))
+    
+    #ref
+    pred.mesh$vb[-4,] <-  t(synd.mat[,,unique(d.meta.combined$Syndrome) == input$reference])
+    test2 <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), t(atlas$vb[1:3,rigid.points]))
+    
+    
+    #calculate syndrome severity scores for selected syndrome
+    #calculate score for the whole face
+    S <- synd.lm.coefs[grepl(pattern = input$synd_comp, rownames(synd.lm.coefs)),][1,]
+    Snorm <- S/sqrt(sum(S^2))
+    syndscores.main <- PC.scores %*% Snorm
+    
+    syndscores.df <- data.frame(Syndrome = d.meta.combined$Syndrome, face.score = syndscores.main)
+    syndscores.wholeface <- syndscores.df%>%
+      group_by(Syndrome) %>%
+      summarise(face_score = mean(face.score))
+    
+    # calculate score for the selected subregion
+    if(is.null(input$network_selected)) selected.node <- 1 else if(input$network_selected == ""){
+      selected.node <- 1} else{
+        selected.node <- as.numeric(input$network_selected)}
+
+    if(selected.node > 1){
+    subregion.coefs <- manova(get(paste0(tolower(colnames(modules)[selected.node]), ".pca"))$x ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
+    S <- subregion.coefs[grepl(pattern = input$synd_comp, rownames(subregion.coefs)),][1,]
+    print(rownames(subregion.coefs)[grepl(pattern = input$synd_comp, rownames(subregion.coefs))])
+    Snorm <- S/sqrt(sum(S^2))
+    syndscores.main <- get(paste0(tolower(colnames(modules)[selected.node]), ".pca"))$x %*% Snorm
+
+    syndscores.df <- data.frame(Syndrome = d.meta.combined$Syndrome, module.score = syndscores.main)
+    syndscores.module <- syndscores.df%>%
+      group_by(Syndrome) %>%
+      summarise(face_score = mean(module.score))
+    } else{syndscores.module <- syndscores.wholeface}
+    
+    
+    return(list(test2, test, syndscores.wholeface, syndscores.module))
+  })
+
+  
   output$gestalt <- renderRglwidget({
     pdf(NULL)
     dev.off()
-
-
+    
     clear3d()
-    #file loading
-    # nonsynd.mean <- file2mesh(paste0("Downloads/Module1/", input$reference, ".obj"))
-    # synd.mean <- file2mesh(paste0("Downloads/Module1/", input$synd, ".obj"))
-    if(is.null(input$network_selected)) selected.node <- 1 else if(input$network_selected == ""){
-      selected.node <- 1} else{
-      selected.node <- as.numeric(input$network_selected)} 
+    #visualize full model estimates####
+     if(input$sex == "Female"){selected.sex <-1
+     } else if(input$sex == "Male"){selected.sex <- 0} 
+    # selected.age <- input$age
+    
+    # if(is.null(debounced.inputs()[[1]])){ selected.age <- 12 } else{
+    selected.age <- pred.synd()[[3]]
+    # }
+    # selected.sex <- 1
+    # selected.age <- 6
     
     
-    nonsynd.mean <- modules[[selected.node]]
-    nonsynd.mean$vb[1:3,] <- synd.mat[, segmentation[,selected.node] == T,synd.names == input$reference]
-
-
-    synd.mean <- modules[[selected.node]]
-    synd.mean$vb[1:3,] <- synd.mat[, segmentation[,selected.node] == T, synd.names == input$synd]
-
-     # par3d(userMatrix = matrix(c(.998,-.005,.0613,0,.0021,.999,.045,0,-.061,-.045,.997,0,0,0,0,1),ncol = 4,nrow = 4))
-    par3d(userMatrix = front.face)
-    par3d(zoom = .83)
-    bg3d(color = "#1a1a1a")
-    bg3d(color = "white")
-    if(input$displace){
-    mD.synd <- meshDist(nonsynd.mean, synd.mean, plot = F, scaleramp = F, displace = input$displace, alpha = input$transparency)
-    a <- render(mD.synd, displace = T, alpha = input$transparency)
-    } else{
-
-      mD.synd <- meshDist(nonsynd.mean, synd.mean, plot = F, scaleramp = F, displace = input$displace, alpha = input$transparency)
-      a <- render(mD.synd, displace = F, alpha = input$transparency)
-
-    }
-
-    if(selected.node > 1){
-      module1.ref <- modules[[1]]
-      module1.ref$vb[1:3,] <- synd.mat[,,synd.names == input$reference]
-      shade3d(module1.ref, col = "lightgrey", alpha = .3, specular = 1)
-    }
-
-    if(input$synd == input$reference){
-      plot3d(nonsynd.mean, col = "lightgrey", alpha = 1, specular = 1, box = F, axes = F, xlab = "", ylab = "", zlab = "")
-      aspect3d("iso")
-    }
-
-    rglwidget()
-
-   })
+    # if(is.null(input$synd)){ selected.synd <- "Costello Syndrome" } else{
+      selected.synd <- pred.synd()[[2]]
+    # }
+    
+    datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    #calculate score for the main effect
+    S <- synd.lm.coefs[grepl(pattern = selected.synd, rownames(synd.lm.coefs)),][1,]
+    Snorm <- S/sqrt(sum(S^2))
+    # syndscores.main <- PC.scores %*% Snorm
+    # 
+    # #solve for max in min syndromic severities
+    # 
+    # #if the mean is higher for the selected syndrome, then max is max
+    # meanscore.ns <- mean(syndscores.main[d.meta.combined$Syndrome == "Unaffected Unrelated"])
+    # meanscore.synd <- mean(syndscores.main[d.meta.combined$Syndrome == selected.synd])
+    
+    # if(is.null(pred.synd()[[4]])){ selected.severity <- meanscore.synd } else{
+      selected.severity <- pred.synd()[[4]]
+    # }
+    print(selected.severity)
+      
+    # if(meanscore.synd > meanscore.ns){main.res <- matrix(t(PC.eigenvectors %*% (selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])} else{main.res <- matrix(t(PC.eigenvectors %*% (selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])} 
+      main.res <- matrix(t(PC.eigenvectors %*% (selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
   
-  output$morphospace <- renderPlot({
+    #add severity residuals
+    pred.mesh$vb[-4,] <-  t(pred.synd()[[1]] + main.res) #+ interaction.res)
+    rigid.points <- sample(1:27000, 100)
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), t(atlas$vb[1:3,rigid.points]))
+    
+    # nonsynd.mean <- modules[[selected.node]]
+    # nonsynd.mean$vb[1:3,] <- synd.mat[, segmentation[,selected.node] == T,d.meta.combined$Syndrome == input$reference]
+    # 
+    # 
+    # synd.mean <- modules[[selected.node]]
+    # synd.mean$vb[1:3,] <- synd.mat[, segmentation[,selected.node] == T, d.meta.combined$Syndrome == input$synd]
+    
+    # par3d(userMatrix = matrix(c(.998,-.005,.0613,0,.0021,.999,.045,0,-.061,-.045,.997,0,0,0,0,1),ncol = 4,nrow = 4))
+    # par3d(userMatrix = front.face)
+    # 
+    # #texture simulation####
+    # datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    # predicted.texture <- predtexture.lm(texture.coefs, datamod, texture.pca$rotation[,1:2000], texture.pca$center)
+    # 
+    # predicted.texture3d <- row2array3d(predicted.texture)[,,1]
+    # 
+    # starting.texture <- matrix(NA, nrow = length(atlas$material$color), ncol = 3)
+    # for(j in 1:length(atlas$material$color)) starting.texture[j,] <- col2rgb(atlas$material$color[j])
+    # 
+    # final.texture <- starting.texture
+    # # final.texture[brow.index,] <- starting.texture[brow.index,] + predicted.texture3d[brow.index,]
+    # # final.texture[-brow.index,1] <- final.texture[-brow.index,1]  + colMeans(predicted.texture3d[brow.index,])[1]
+    # # final.texture[-brow.index,2] <- final.texture[-brow.index,2]  + colMeans(predicted.texture3d[brow.index,])[2]
+    # # final.texture[-brow.index,3] <- final.texture[-brow.index,3]  + colMeans(predicted.texture3d[brow.index,])[3]
+    # final.texture <-  (predicted.texture3d) + starting.texture
+    # 
+    # 
+    # #scale values
+    # maxs <- apply(final.texture, 2, max)
+    # mins <- apply(final.texture, 2, min)
+    # additive.texture <- scale(final.texture, center = mins, scale = maxs - mins)
+    # hex.mean <- rgb(additive.texture, maxColorValue = 1)
+    # test$mesh$material$color[-eye.index] <- hex.mean[-eye.index]
+    # 
+    # 
+    #   par3d(userMatrix = front.face)
+    #   
+    #   synd.ages <- data.frame(age = d.meta.combined$Age[which(d.meta.combined$Syndrome == input$synd)], index = which(d.meta.combined$Syndrome == input$synd))
+    #   
+    #   synd.textures <- synd.ages$index[sort(abs(synd.ages$age - if(is.null(input$dynamic_age)){12}else{input$dynamic_age}), index.return = T)$ix][1:2]
+    #   
+    #   print(d.meta.combined[synd.textures,])
+      
+      # gen.scan <- generate.face(texture.pca, num.pcs = 2000, mesh = test$mesh, draws = synd.textures)
+      # plot3d(gen.scan, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F, specular = 1)
+      plot3d(test$mesh, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F, specular = 1)
+      # plot3d(atlas, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F)
+      par3d(zoom = .83)
+      # bg3d("#e5e5e5")
+      bg3d("#fcfcfc")
+      
+    par3d(userMatrix = front.face)
+    rglwidget()
+    
+  })
+  
+  output$comparison <- renderRglwidget({
+    pdf(NULL)
+    dev.off()
+    
+    clear3d()
     
     if(is.null(input$network_selected)) selected.node <- 1 else if(input$network_selected == ""){
       selected.node <- 1} else{
         selected.node <- as.numeric(input$network_selected)} 
     
-    module.names <- c("Whole face", "Maxilla/Nose", "Mandible/Sphenoid/Frontal", "Upper lip", "Nasal/Maxilla subset", "Cheek/Mandible", "Sphenoid/Frontal", "Nasolabial", "Philtrum", "Lateral Nasal", "Nose", "Cheek", "Chin/Mandible", "Frontal", "Orbital/Temporal/Sphenoid")
     
-    full.morpho <- procdist.array(synd.mat, synd.mat[,,synd.names == input$synd])
+    if(input$displace & input$synd_comp != input$reference & selected.node == 1){
+      mD.synd <- meshDist(syndrome_comps()[[1]]$mesh, syndrome_comps()[[2]]$mesh, plot = F, scaleramp = F, displace = input$displace, alpha = input$transparency)
+      a <- render(mD.synd, displace = T, alpha = input$transparency)
+    } else if(input$displace == F & input$synd_comp != input$reference & selected.node == 1){
+      
+      mD.synd <- meshDist(syndrome_comps()[[1]]$mesh, syndrome_comps()[[2]]$mesh, plot = F, scaleramp = F, displace = input$displace, alpha = input$transparency)
+      a <- render(mD.synd, displace = F, alpha = input$transparency)
+      
+    }
     
-    sub.morpho <- procdist.array(synd.mat[,segmentation[,selected.node] == T,], synd.mat[, segmentation[,selected.node] == T, synd.names == input$synd])
+    if(selected.node > 1){
+     
+      mD.synd <- meshDist(syndrome_comps()[[1]]$mesh, syndrome_comps()[[2]]$mesh, plot = F, scaleramp = F, displace = input$displace, alpha = input$transparency)
+      mD.synd <- rmVertex(mD.synd$colMesh, index = which(modules[,selected.node] == 1), keep = T)
+      # a <- render(mD.synd, displace = F, alpha = input$transparency)
+      plot3d(mD.synd, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = T, specular = 1)
+      shade3d(syndrome_comps()[[1]]$mesh, col = "lightgrey", alpha = .2, specular = 1)
+    }
+    
+    par3d(userMatrix = front.face, zoom = .83)
+    rglwidget()
+    
+  })
+  
+  output$morphospace <- renderPlot({
 
-    # 
-    # full.morpho <- procdist.array(synd.mat, synd.mat[,,synd.names == "Nager"])
-    # 
-    # sub.morpho <- procdist.array(synd.mat[,segmentation[,2] == T,], synd.mat[, segmentation[,2] == T, synd.names == "Nager"])
-    
-    morpho.df <- data.frame(full = full.morpho, sub = sub.morpho, synd.names = synd.names)[full.morpho != 0,]
-    
+    if(is.null(input$network_selected)) selected.node <- 1 else if(input$network_selected == ""){
+      selected.node <- 1} else{
+        selected.node <- as.numeric(input$network_selected)}
+
+    module.names <- colnames(modules)
+#
+#     full.morpho <- procdist.array(synd.mat, synd.mat[,,d.meta.combined$Syndrome == input$synd_comp])
+#
+#     sub.morpho <- procdist.array(synd.mat[modules[,selected.node] == 1,,], synd.mat[modules[,selected.node] == 1,, d.meta.combined$Syndrome == input$synd_comp])
+
+    morpho.df <- data.frame(full = syndrome_comps()[[3]]$face_score, sub = syndrome_comps()[[4]]$face_score, Syndrome = levels(d.meta.combined$Syndrome))
+
     highlight_df <- morpho.df[sort(morpho.df$sub, index.return = T)$ix,]
     #to do
     #highlight 5 closest syndromes with names
     #maybe all points should be names, with 5 highlighted
-    ggplot(morpho.df) +
-      geom_point(aes(y = full, x = sub), color = "white") +
-      geom_point(data = highlight_df[1:5,], aes(y = full, x = sub), color = "white", fill = "#fca311", shape = 21, size = 3) +
-      geom_label_repel(data = highlight_df[c(1:5, 60:64),], aes(y = full, x = sub, label = synd.names),
+    p <- ggplot(morpho.df) +
+      geom_point(aes(y = full, x = sub), color = "black") +
+      geom_point(data = highlight_df[85:89,], aes(y = full, x = sub), color = "black", fill = "#a6192e", shape = 21, size = 3) +
+      geom_label_repel(data = highlight_df[c(1:5, 85:89),], aes(y = full, x = sub, label = Syndrome),
                        force = 2,
                        size = 4,
-                       color = c(rep("#fca311", 5), rep("white", 5)),
-                       fill = "#1a1a1a") +
-      ylab(paste0("Full face distance from ", input$synd)) +
-      xlab(paste0(module.names[selected.node], " distance from ", input$synd)) +
+                       color = c(rep("black", 5), rep("#a6192e", 5)),
+                       fill = "white") +
+      ylab(paste0("Whole face score for ", input$synd_comp)) +
+      xlab(paste0(module.names[selected.node], " score for ", input$synd_comp)) +
       # ylim(-.25,3.5) +
       theme_bw() +
-      theme(panel.background = element_rect(fill = "#1a1a1a"),
-            plot.background = element_rect(fill = "#1a1a1a"),
-            axis.text = element_text(color = "white"),
-            axis.title = element_text(color = "white"),
+      theme(plot.background = element_rect(fill = "#fcfcfc"),
+            axis.text = element_text(color = "black"),
+            axis.title = element_text(color = "black"),
             panel.grid.major = element_line(size = 0.5, linetype = 'solid',
-                                            colour = "#404040"), 
+                                            colour = "black"),
             panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
-                                            colour = "#404040")
+                                            colour = "black"), 
+            panel.background = element_blank(),
+            plot.margin = margin(20, 20, 20, 20)
       )
+    print(selected.node)
+    g <- ggplotGrob(p)
+    bg <- g$grobs[[1]]
+    round_bg <- roundrectGrob(x=bg$x, y=bg$y, width=bg$width, height=bg$height,
+                              r=unit(0.1, "snpc"),
+                              just=bg$just, name=bg$name, gp=bg$gp, vp=bg$vp)
+    g$grobs[[1]] <- round_bg
     
+    plot(g)
+    
+
   })
+  
+  
   
 }
 
 shinyApp(ui = ui, server = server)
+
+
+
+
+
+
+
+
+
+
+
