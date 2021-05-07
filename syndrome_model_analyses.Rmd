@@ -1,0 +1,777 @@
+---
+title: "evaluating syndrome atlas model"
+output: html_notebook
+---
+
+
+```{r load data}
+
+library(Morpho)
+# library(geomorph)
+library(rgl)
+library(shinycssloaders)
+library(Jovid)
+library(Rvcg)
+library(visNetwork)
+library(plotly)
+library(ggrepel)
+
+setwd("~/shiny/shinyapps/Syndrome_model/")
+ # setwd("/srv/shiny-server/testing_ground/")
+# save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, d.meta.combined$Syndrome, synd.mshape, file = "data.Rdata")
+ load("data.Rdata")
+
+ #load 30K dataset
+ load("~/Downloads/Segmented_PLS/30k.Rdata")
+
+ predshape.lm <- function(fit, datamod, PC, mshape){
+   dims <- dim(mshape)
+   mat <- model.matrix(datamod)
+   pred <- mat %*% fit
+   names <- as.matrix(model.frame(datamod))
+   names <- apply(names, 1, paste, collapse = "_")
+   names <- gsub(" ", "", names)
+   predPC <- t(PC %*% t(pred))
+   out <- mshape + matrix(predPC, dims[1], dims[2])
+   # dimnames(out)[[3]] <- names
+   # rownames(pred) <- names
+   return(out)
+ }
+
+ atlas <- file2mesh("whoami.ply", readcol = T)
+  pred.mesh <- atlas 
+  pred.mesh2 <- atlas
+  
+ 
+```
+
+```{r visualize model}
+
+clear3d()
+    #visualize full model estimates####
+     selected.sex <-1
+    
+    # selected.age <- input$age
+    
+    
+    selected.age <- 12
+    
+    # selected.sex <- 1
+    # selected.age <- 6
+    selected.synd <- factor("Achondroplasia", levels = levels(d.meta.combined$Syndrome))
+    datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    
+    # atlas <- file2mesh("whoami.ply", readcol = T)
+   
+    
+    #synd
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    rigid.points <- sample(1:27000, 100)
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), t(atlas$vb[1:3,rigid.points]))
+    
+    #ref
+    selected.synd <- factor("Unaffected Unrelated", levels = levels(d.meta.combined$Syndrome))
+    datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    test2 <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), t(atlas$vb[1:3,rigid.points]))
+    
+    bg3d("#1a1a1a")
+      par3d(userMatrix = front.face)
+      
+      synd.ages <- data.frame(age = d.meta.combined$Age[which(d.meta.combined$Syndrome == "Achondroplasia")], index = which(d.meta.combined$Syndrome == "Achondroplasia"))
+      
+      synd.textures <- synd.ages$index[sort(abs(synd.ages$age - 12), index.return = T)$ix][1:2]
+      
+      print(d.meta.combined[synd.textures,])
+      
+      # gen.scan <- generate.face(texture.pca, num.pcs = 2000, mesh = test$mesh, draws = synd.textures)
+      # plot3d(gen.scan, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F, specular = 1)
+      plot3d(test$mesh, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F, specular = 1)
+      # plot3d(atlas, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F)
+    
+    par3d(userMatrix = front.face)
+    rglwidget()
+
+
+```
+
+
+```{r get predicted shape}
+
+# synd.ages
+
+load("~/Downloads/Dense_combined_starter_PC_outliers_duplicates_removed.Rdata")
+setwd("~/shiny/shinyapps/Syndrome_model/")
+load("data.Rdata")
+
+#lets make a residuals x age plot for the selected syndrome
+model.resid <- rep(0, length(d.meta.combined$Age[d.meta.combined$Syndrome == "Achondroplasia"]))
+
+selected.age <- d.meta.combined$Age[d.meta.combined$Syndrome == "Achondroplasia"][1]
+selected.sex <- 1
+selected.synd <- factor("Achondroplasia", levels = levels(d.meta.combined$Syndrome))
+matched.face <- d.lms.combined[,,d.meta.combined$Syndrome == "Achondroplasia"][,,1]
+
+datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    pred.mesh <- atlas
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    rigid.points <- sample(1:27000, 100)
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), matched.face[rigid.points,], scale = T)
+    
+
+    # bg3d("#1a1a1a")
+      par3d(userMatrix = front.face)
+      
+      plot3d(test$mesh, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F, specular = 1)
+     
+    rglwidget()
+
+
+```
+
+```{r get actual shape}
+
+actual.mesh <- pred.mesh
+
+actual.mesh$vb[-4,] <-  t(matched.face)
+    # rigid.points <- sample(1:27000, 100)
+    test2 <- rotmesh.onto(actual.mesh, t(actual.mesh$vb[1:3,rigid.points]), t(test$mesh$vb[1:3,rigid.points]), scale = T)
+
+    bg3d("#1a1a1a")
+      par3d(userMatrix = front.face)
+      
+      plot3d(test2$mesh, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F, specular = 1)
+     
+    rglwidget()
+
+    
+```
+
+```{r compare predicted to actual}
+
+
+
+meshDist(test$mesh, test2$mesh, displace = F, shade = T)
+
+rglwidget()
+
+
+```
+
+```{r loop comparisons for Nager syndrome across ages to measure model error}
+
+#lets make a residuals x age plot for the selected syndrome
+model.resid <- rep(0, length(d.meta.combined$Age[d.meta.combined$Syndrome == "Nager Syndrome"]))
+
+for(i in 1:length(model.resid)){
+selected.age <- d.meta.combined$Age[d.meta.combined$Syndrome == "Nager Syndrome"][i]
+selected.sex <- if(d.meta.combined$Sex[d.meta.combined$Syndrome == "Nager Syndrome"][i] == "M"){ 1} else {2} 
+selected.synd <- factor("Nager Syndrome", levels = levels(d.meta.combined$Syndrome))
+matched.face <- d.lms.combined[,,d.meta.combined$Syndrome == "Nager Syndrome"][,,i]
+
+
+
+datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    rigid.points <- sample(1:27000, 100)
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), matched.face[rigid.points,], scale = T)
+    
+actual.mesh <- pred.mesh
+
+actual.mesh$vb[-4,] <-  t(matched.face)
+    # rigid.points <- sample(1:27000, 100)
+    test2 <- rotmesh.onto(actual.mesh, t(actual.mesh$vb[1:3,rigid.points]), t(test$mesh$vb[1:3,rigid.points]), scale = T)
+
+model.resid[i] <- sum(sqrt((test2$mesh$vb[-4,] - test$mesh$vb[-4,])^2))/ncol(test$mesh$vb)
+}
+
+sorted.ages <- sort(d.meta.combined$Age[d.meta.combined$Syndrome == "Nager Syndrome"], index.return = T)
+
+plot(model.resid[sorted.ages$ix] ~ sorted.ages$x, typ = "l")
+plot(model.resid ~ d.meta.combined$Age[d.meta.combined$Syndrome == "Nager Syndrome"])
+boxplot(model.resid ~ d.meta.combined$Sex[d.meta.combined$Syndrome == "Nager Syndrome"])
+
+#get it in a dataframe, work towards ggplot####
+df <- data.frame(resids = model.resid, age = d.meta.combined$Age[d.meta.combined$Syndrome == "Nager Syndrome"], Sex = d.meta.combined$Sex[d.meta.combined$Syndrome == "Nager Syndrome"])
+
+pdf("~/Desktop/mod_images/nager_resids.pdf", width = 5, height = 3)
+ggplot(df, aes(x = age, y = resids, color = Sex)) + 
+  geom_point() +
+  geom_smooth(method = "lm", alpha = .15, aes(fill = Sex)) + 
+  xlab("Age") +
+  ylab("Average residual (mm)")
+
+dev.off()
+
+
+```
+
+```{r worst nager pred}
+
+i = which.max(model.resid)
+selected.age <- d.meta.combined$Age[d.meta.combined$Syndrome == "Nager Syndrome"][i]
+selected.sex <- if(d.meta.combined$Sex[d.meta.combined$Syndrome == "Nager Syndrome"][i] == "M"){ 1} else {2} 
+selected.synd <- factor("Nager Syndrome", levels = levels(d.meta.combined$Syndrome))
+matched.face <- d.lms.combined[,,d.meta.combined$Syndrome == "Nager Syndrome"][,,i]
+
+
+
+datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    rigid.points <- sample(1:27000, 100)
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), matched.face[rigid.points,], scale = T)
+    
+actual.mesh <- pred.mesh
+
+actual.mesh$vb[-4,] <-  t(matched.face)
+    # rigid.points <- sample(1:27000, 100)
+    test2 <- rotmesh.onto(actual.mesh, t(actual.mesh$vb[1:3,rigid.points]), t(test$mesh$vb[1:3,rigid.points]), scale = T)
+
+ bg3d("#1a1a1a")
+      par3d(userMatrix = front.face)
+      
+      plot3d(test2$mesh, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F, specular = 1)
+     
+    rglwidget()
+    
+     bg3d("#1a1a1a")
+      par3d(userMatrix = front.face)
+      
+      plot3d(test$mesh, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F, specular = 1, add = T)
+     
+    rglwidget()
+ 
+    bg3d("white")
+par3d(windowRect = c(0,0, 950,1000), userMatrix = new.front, zoom = .75)       
+meshDist(test$mesh, test2$mesh, displace = F, shade = T, from = -10, to = 10)
+system(paste0("screencapture -R 20,60,900,950 ~/Desktop/mod_images/Nager_worst.png"))
+rglwidget()
+
+```
+
+```{r best nager pred}
+
+i = which.min(model.resid)
+selected.age <- d.meta.combined$Age[d.meta.combined$Syndrome == "Nager Syndrome"][i]
+selected.sex <- if(d.meta.combined$Sex[d.meta.combined$Syndrome == "Nager Syndrome"][i] == "M"){ 1} else {2} 
+selected.synd <- factor("Nager Syndrome", levels = levels(d.meta.combined$Syndrome))
+matched.face <- d.lms.combined[,,d.meta.combined$Syndrome == "Nager Syndrome"][,,i]
+
+
+
+datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    rigid.points <- sample(1:27000, 100)
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), matched.face[rigid.points,], scale = T)
+    
+actual.mesh <- pred.mesh
+
+actual.mesh$vb[-4,] <-  t(matched.face)
+    # rigid.points <- sample(1:27000, 100)
+    test2 <- rotmesh.onto(actual.mesh, t(actual.mesh$vb[1:3,rigid.points]), t(test$mesh$vb[1:3,rigid.points]), scale = T)
+
+ bg3d("#1a1a1a")
+      par3d(userMatrix = front.face)
+      
+      plot3d(test2$mesh, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F, specular = 1)
+     
+    rglwidget()
+    
+     bg3d("#1a1a1a")
+      par3d(userMatrix = front.face)
+      
+      plot3d(test$mesh, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F, specular = 1, add = T)
+     
+    rglwidget()
+
+     bg3d("white")
+par3d(windowRect = c(0,0, 950,1000), userMatrix = second.front, zoom = .75)       
+meshDist(test$mesh, test2$mesh, displace = F, shade = T, from = -10, to = 10)
+system(paste0("screencapture -R 20,60,900,950 ~/Desktop/mod_images/Nager_best.png"))
+rglwidget()
+
+```
+
+
+```{r loop comparisons for Van der Woude syndrome across ages to measure model error}
+
+#lets make a residuals x age plot for the selected syndrome
+model.resid <- rep(0, length(d.meta.combined$Age[d.meta.combined$Syndrome == "Van der Woude Syndrome"]))
+
+for(i in 1:length(model.resid)){
+selected.age <- d.meta.combined$Age[d.meta.combined$Syndrome == "Van der Woude Syndrome"][i]
+selected.sex <- if(d.meta.combined$Sex[d.meta.combined$Syndrome == "Van der Woude Syndrome"][i] == "M"){ 1} else {2} 
+selected.synd <- factor("Van der Woude Syndrome", levels = levels(d.meta.combined$Syndrome))
+matched.face <- d.lms.combined[,,d.meta.combined$Syndrome == "Van der Woude Syndrome"][,,i]
+
+
+
+datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    rigid.points <- sample(1:27000, 100)
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), matched.face[rigid.points,], scale = T)
+    
+actual.mesh <- pred.mesh
+
+actual.mesh$vb[-4,] <-  t(matched.face)
+    # rigid.points <- sample(1:27000, 100)
+    test2 <- rotmesh.onto(actual.mesh, t(actual.mesh$vb[1:3,rigid.points]), t(test$mesh$vb[1:3,rigid.points]), scale = T)
+
+model.resid[i] <- sum(sqrt((test2$mesh$vb[-4,] - test$mesh$vb[-4,])^2))/ncol(test$mesh$vb)
+}
+
+sorted.ages <- sort(d.meta.combined$Age[d.meta.combined$Syndrome == "Van der Woude Syndrome"], index.return = T)
+
+plot(model.resid[sorted.ages$ix] ~ sorted.ages$x, typ = "l")
+plot(model.resid ~ d.meta.combined$Age[d.meta.combined$Syndrome == "Van der Woude Syndrome"])
+boxplot(model.resid ~ d.meta.combined$Sex[d.meta.combined$Syndrome == "Van der Woude Syndrome"])
+
+#get it in a dataframe, work towards ggplot####
+df <- data.frame(resids = model.resid, age = d.meta.combined$Age[d.meta.combined$Syndrome == "Van der Woude Syndrome"], Sex = d.meta.combined$Sex[d.meta.combined$Syndrome == "Van der Woude Syndrome"])
+
+pdf("~/Desktop/mod_images/vdw_resids.pdf", width = 5, height = 3)
+ggplot(df, aes(x = age, y = resids, color = Sex)) + 
+  geom_point() +
+  geom_smooth(method = "lm", alpha = .15, aes(fill = Sex)) + 
+  xlab("Age") +
+  ylab("Average residual (mm)")
+
+dev.off()
+
+
+
+```
+
+
+```{r worst Van der Woude Syndrome pred}
+
+i = which.max(model.resid)
+selected.age <- d.meta.combined$Age[d.meta.combined$Syndrome == "Van der Woude Syndrome"][i]
+selected.sex <- if(d.meta.combined$Sex[d.meta.combined$Syndrome == "Van der Woude Syndrome"][i] == "M"){ 1} else {2} 
+selected.synd <- factor("Van der Woude Syndrome", levels = levels(d.meta.combined$Syndrome))
+matched.face <- d.lms.combined[,,d.meta.combined$Syndrome == "Van der Woude Syndrome"][,,i]
+
+
+
+datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    rigid.points <- sample(1:27000, 100)
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), matched.face[rigid.points,], scale = T)
+    
+actual.mesh <- pred.mesh
+
+actual.mesh$vb[-4,] <-  t(matched.face)
+    # rigid.points <- sample(1:27000, 100)
+    test2 <- rotmesh.onto(actual.mesh, t(actual.mesh$vb[1:3,rigid.points]), t(test$mesh$vb[1:3,rigid.points]), scale = T)
+
+ bg3d("#1a1a1a")
+      par3d(userMatrix = front.face)
+      
+      plot3d(test2$mesh, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F, specular = 1)
+     
+    rglwidget()
+    
+     bg3d("#1a1a1a")
+      par3d(userMatrix = front.face)
+      
+      plot3d(test$mesh, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F, specular = 1, add = T)
+     
+    rglwidget()
+ 
+    bg3d("white")
+par3d(windowRect = c(0,0, 950,1000), userMatrix = vworst_front, zoom = .75)       
+meshDist(test$mesh, test2$mesh, displace = F, shade = T, from = -10, to = 10)
+system(paste0("screencapture -R 20,60,900,950 ~/Desktop/mod_images/Van_der_Woude_Syndrome_worst.png"))
+rglwidget()
+
+```
+
+```{r best Van der Woude Syndrome pred}
+
+i = which.min(model.resid)
+selected.age <- d.meta.combined$Age[d.meta.combined$Syndrome == "Van der Woude Syndrome"][i]
+selected.sex <- if(d.meta.combined$Sex[d.meta.combined$Syndrome == "Van der Woude Syndrome"][i] == "M"){ 1} else {2} 
+selected.synd <- factor("Van der Woude Syndrome", levels = levels(d.meta.combined$Syndrome))
+matched.face <- d.lms.combined[,,d.meta.combined$Syndrome == "Van der Woude Syndrome"][,,i]
+
+
+
+datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    rigid.points <- sample(1:27000, 100)
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), matched.face[rigid.points,], scale = T)
+    
+actual.mesh <- pred.mesh
+
+actual.mesh$vb[-4,] <-  t(matched.face)
+    # rigid.points <- sample(1:27000, 100)
+    test2 <- rotmesh.onto(actual.mesh, t(actual.mesh$vb[1:3,rigid.points]), t(test$mesh$vb[1:3,rigid.points]), scale = T)
+
+ bg3d("#1a1a1a")
+      par3d(userMatrix = front.face)
+      
+      plot3d(test2$mesh, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F, specular = 1)
+     
+    rglwidget()
+    
+     bg3d("#1a1a1a")
+      par3d(userMatrix = front.face)
+      
+      plot3d(test$mesh, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F, specular = 1, add = T)
+     
+    rglwidget()
+ 
+    bg3d("white")
+par3d(windowRect = c(0,0, 950,1000), userMatrix = vbest_front, zoom = .75)       
+meshDist(test$mesh, test2$mesh, displace = F, shade = T, from = -10, to = 10)
+system(paste0("screencapture -R 20,60,900,950 ~/Desktop/mod_images/Van_der_Woude_Syndrome_best.png"))
+rglwidget()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r high level comparisons}
+
+df <- data.frame()
+#lets make a residuals x age plot for the selected syndrome
+for(j in 1: length(unique(d.meta.combined$Syndrome))){
+
+model.resid <- rep(0, length(d.meta.combined$Age[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]]))
+
+for(i in 1:length(model.resid)){
+selected.age <- d.meta.combined$Age[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]][i]
+selected.sex <- if(d.meta.combined$Sex[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]][i] == "M"){ 1} else {2} 
+selected.synd <- factor(unique(d.meta.combined$Syndrome)[j], levels = levels(d.meta.combined$Syndrome))
+matched.face <- d.lms.combined[,,d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]][,,i]
+
+
+
+datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    rigid.points <- sample(1:27000, 100)
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), matched.face[rigid.points,], scale = T)
+    
+actual.mesh <- pred.mesh
+
+actual.mesh$vb[-4,] <-  t(matched.face)
+    # rigid.points <- sample(1:27000, 100)
+    test2 <- rotmesh.onto(actual.mesh, t(actual.mesh$vb[1:3,rigid.points]), t(test$mesh$vb[1:3,rigid.points]), scale = T)
+
+model.resid[i] <- sum(sqrt((test2$mesh$vb[-4,] - test$mesh$vb[-4,])^2))/ncol(test$mesh$vb)
+}
+
+df <- rbind.data.frame(df, data.frame(resids = model.resid, age = d.meta.combined$Age[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]], sex = d.meta.combined$Sex[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]], synd = unique(d.meta.combined$Syndrome)[j]))
+
+}
+
+ggplot(subset(df, synd %in% unique(df$synd)[1:30]), aes(x = age, y = resids, color = sex)) + 
+  geom_point() +
+  geom_smooth(method = "lm", alpha = .15, aes(fill = sex)) +
+  facet_wrap(synd ~ .) + 
+  ylim(c(0,10))
+
+
+ggplot(subset(df, synd %in% unique(df$synd)[1:30]), aes(x = age, y = resids, color = synd)) + 
+  geom_point(alpha = .25) +
+  geom_smooth(method = "lm", alpha = .15, aes(fill = synd), se = F) +
+  ylim(c(0,10))
+
+pdf(file = "model_resids5.pdf", width = 11, height = 8)
+ggplot(subset(df, synd %in% unique(df$synd)[81:91]), aes(x = age, y = resids)) + 
+  geom_point() +
+  geom_smooth(method = "lm", alpha = .15) +
+  facet_wrap(synd ~ .) + 
+  ylim(c(0,10)) + 
+  xlab("Age") + 
+  ylab("Residuals")
+dev.off()
+
+
+```
+
+
+```{r validate model estimation with simple classification scheme}
+
+#notes from Peter####
+# Given an individual of syndrome A, age X and Sex Y, -> predict an archetype for this individual of syndrome A, age X and sex Y
+#Also predict archetypes for all the other syndromes with the same X and Y.
+#Get distance of your individual to all archetypes, and assign closest archetype for classifying syndrome for individual
+matched.diffs <- matrix(NA, nrow = nrow(d.meta.combined), ncol = length(unique(d.meta.combined$Syndrome)))
+colnames(matched.diffs) <- unique(d.meta.combined$Syndrome)
+closest.synd <- rep(NA, nrow(d.meta.combined))
+rigid.points <- sample(1:27000, 100)
+for(i in 8:length(d.meta.combined$Syndrome)){
+    selected.age <- d.meta.combined$Age[i]
+    selected.sex <- if(d.meta.combined$Sex[i] == "M"){ 1} else {2} 
+    matched.face <- d.lms.combined[,,i]
+    
+    actual.mesh <- pred.mesh
+    actual.mesh$vb[-4,] <-  t(matched.face)
+    
+    
+    datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd +      selected.age:selected.synd
+    pred.shapes <- array(NA, dim = c(ncol(atlas$vb), 3, length(unique(d.meta.combined$Syndrome))))
+    for(j in 1:length(unique(d.meta.combined$Syndrome))){
+    selected.synd <- factor(unique(d.meta.combined$Syndrome)[j], levels = levels(d.meta.combined$Syndrome))
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    pred.shapes[,,j]
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), matched.face[rigid.points,], scale = T)
+    
+    
+
+matched.diffs[i,j] <- sum(sqrt((test$mesh$vb[-4,] - actual.mesh$vb[-4,])^2))
+
+    }
+    closest.synd[i] <- as.character(unique(d.meta.combined$Syndrome)[which.min(matched.diffs[i,])])
+    print(i)
+}
+
+colnames(matched.diffs)[apply(matched.diffs, 1, which.min)]
+
+is.matched <- rep(NA, length(closest.synd))
+for(i in 1:length(closest.synd)) is.matched[i] <- closest.synd[i] == d.meta.combined$Syndrome[i]
+
+sum(is.matched)/2748
+
+#wtf, let's plot the first ex....Muenke syndrome wins?
+ selected.age <- d.meta.combined$Age[i]
+    selected.sex <- if(d.meta.combined$Sex[i] == "M"){ 1} else {2} 
+    matched.face <- d.lms.combined[,,i]
+    
+    actual.mesh <- pred.mesh
+    actual.mesh$vb[-4,] <-  t(matched.face)
+ 
+
+    datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+  
+    selected.synd <- factor("Noonan Syndrome", levels = levels(d.meta.combined$Syndrome))
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), matched.face[rigid.points,], scale = T)
+    
+    selected.synd <- factor("Klinefelter Syndrome", levels = levels(d.meta.combined$Syndrome))
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    
+    test3 <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), matched.face[rigid.points,], scale = T)
+    
+    plot3d(actual.mesh, aspect = "iso", col = "lightgrey", specular = 1)
+    plot3d(test$mesh, aspect = "iso", col = 2, specular = 1, add = T, alpha = .7)
+    plot3d(test3$mesh, aspect = "iso", col = 4, specular = 1, add = T, alpha = .7)
+
+    #knn approach?
+
+
+
+# You can repeat this closest archetype based syndrome classifications, where each archetype is simply the group mean, so without taking age and sex into account. The prognosis is that this should perform worse than your model based predicted archetypes taking sex and age into account. Accounting for age and sex is one of the key strengths of your model
+
+
+
+```
+
+
+```{r classifying the predicted values}
+
+twod.lms <- array2row3d()
+
+ selected.age <- d.meta.combined$Age[i]
+    selected.sex <- if(d.meta.combined$Sex[i] == "M"){ 1} else {2} 
+    selected.synd <- factor(d.meta.combined$Syndrome[i], levels = levels(d.meta.combined$Syndrome))
+    matched.face <- d.lms.combined[,,i]
+    
+    actual.mesh <- pred.mesh
+    actual.mesh$vb[-4,] <-  t(matched.face)
+    
+    
+    datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd +      selected.age:selected.synd
+    
+    
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+
+    sparsediscrim::hdrda()
+
+```
+
+
+
+
+
+
+
+```{r compare gestalt classification vs real classification}
+
+#take original data (claes lab 65 lm set?), fit hdrda
+#since we have dense meshes, let's get 200 PCs and fit the model there
+#do I have the landmark index for the 30K mesh? NO
+
+
+
+#Does hdrda classify age-matched syndrome model estimates better than real data?
+
+#for each ind, remove ind, fit model. Classify loo obs as well as synthetic version
+
+
+filtered.lms$Syndrome <- make.names(filtered.lms$Syndrome)
+
+#remove unaffected from families
+families_synd <- families[filtered.lms$Syndrome != "Unrelated.Unaffected"]
+
+filtered.lms2 <- filtered.lms[filtered.lms[,1] != "Unrelated.Unaffected",]
+filtered.lms2[,1] <- as.character(filtered.lms2[,1])
+filtered.lms2[,-1] <- two.d.array(gpagen(arrayspecs(filtered.lms2[,-1], 65, 3))$coords)
+filtered.lms2 <- na.omit(filtered.lms2)
+
+family.synd.folds <- groupKFold(families_synd, k = length(unique(families_synd)))
+
+hdrdaGrid <-  expand.grid(lambda = 1, gamma = 0, shrinkage_type = "ridge")
+
+hdrda.noc.Control <- trainControl(method="cv", classProbs = T, index = family.synd.folds)
+
+filtered.lms$Syndrome <- as.factor(filtered.lms$Syndrome)
+
+no_c_hdrda <- caret::train(Syndrome ~ ., data = filtered.lms2, method = "hdrda", trControl = hdrda.noc.Control, tuneGrid = hdrdaGrid)
+
+#save model: save(hdrda.cva, file = "hdrda_model_no_controls.Rdata")
+save(filtered.lms, no_c_hdrda, file = "/mnt/Hallgrimsson/Users/Jovid/FB2_ML/hdrda_model_nov2019_famgroups_no_c.Rdata")
+
+load("/mnt/Hallgrimsson/Users/Jovid/FB2_ML/hdrda_model_nov2019_famgroups_no_c.Rdata")
+
+no.c.hdrda.pred <- predict(no_c_hdrda, newdata = filtered.lms2[,-1])
+
+View(confusionMatrix(no.c.hdrda.pred, as.factor(filtered.lms2$Syndrome))$byClass)
+
+model.stack <- predict(no_c_hdrda, filtered.lms2)
+  model.probs <- predict(no_c_hdrda, filtered.lms2, type = "prob")
+  top1sens <- confusionMatrix(model.stack, as.factor(filtered.lms2$Syndrome))$byClass[,1]
+  top1acc <- confusionMatrix(model.stack, as.factor(filtered.lms2$Syndrome))$byClass[,11]
+
+  rank2 = 3
+  rank3 = 10
+
+top5.check <- rep(NA, length(filtered.lms2$Syndrome))
+
+for(i in 1: length(filtered.lms2$Syndrome)){
+if(sum(names(sort(model.probs[i,], decreasing = T)[1:rank2]) == filtered.lms2$Syndrome[i]) > 0){
+  top5.check[i] <- as.character(filtered.lms2$Syndrome[i])
+} else{top5.check[i] <- names(sort(model.probs[i,], decreasing = T)[1])}
+}
+
+#top 10
+top10.check <- rep(NA, length(filtered.lms2$Syndrome))
+
+for(i in 1: length(filtered.lms2$Syndrome)){
+if(sum(names(sort(model.probs[i,], decreasing = T)[1:rank3]) == filtered.lms2$Syndrome[i]) > 0){
+  top10.check[i] <- as.character(filtered.lms2$Syndrome[i])
+} else{top10.check[i] <- names(sort(model.probs[i,], decreasing = T)[1])}
+}
+
+
+top5sens <- confusionMatrix(as.factor(top5.check), as.factor(filtered.lms2$Syndrome))$byClass[,1]
+top10sens <- confusionMatrix(as.factor(top10.check), as.factor(filtered.lms2$Syndrome))$byClass[,1]
+
+top5acc <- confusionMatrix(as.factor(top5.check), as.factor(filtered.lms2$Syndrome))$byClass[,11]
+top10acc <- confusionMatrix(as.factor(top10.check), as.factor(filtered.lms2$Syndrome))$byClass[,11]
+
+
+
+
+
+
+
+
+
+
+
+```
+
+
+
+```{r ranked sensitivity graph}
+zz <- cbind(top1sens, top5sens - top1sens, top10sens - top5sens)  
+yy <- zz[order(zz[,1], decreasing = T),]          # order by bb
+yy <- cbind(id=1:nrow(yy),syndrome=substr(row.names(yy), start = 8, stop = 150L),yy)    # add an id column; will need later
+
+#remelt the dataframe
+model.rank.sens <- rbind(cbind(as.numeric(yy[,3]), 1),
+      cbind(as.numeric(yy[,4]), rank2),
+      cbind(as.numeric(yy[,5]), rank3)
+)
+
+model.rank.sens <- data.frame(id = rep(yy[,1],3), model.rank.sens, syndrome = as.factor(yy[,2]))
+model.rank.sens[,3] <- as.factor(model.rank.sens[,3])
+model.rank.sens[,1] <- factor(model.rank.sens[,1], levels = yy[,1])
+colnames(model.rank.sens)[2:3] <- c("sensuracy", "rank")
+model.rank.sens$syndrome <- gsub("X", "", as.character(model.rank.sens$syndrome))
+model.rank.sens$syndrome[model.rank.sens$syndrome == ".Linked.Hypohidrotic.Ectodermal"] <- "XHLED"
+model.rank.sens$syndrome[model.rank.sens$syndrome == "Fragile."] <- "Fragile.X"
+model.rank.sens$syndrome[model.rank.sens$syndrome == "YY"] <- "XXYY"
+model.rank.sens$syndrome[model.rank.sens$syndrome == "22q.11.2.Del"] <- "22q11_2.Del"
+model.rank.sens$syndrome[model.rank.sens$syndrome == "Osteogenesis.Imperfecta"] <- "OIM"
+model.rank.sens$syndrome[model.rank.sens$syndrome == "Rhizomelic.Chondro.Punctata"] <- "Rhizo Chondro Punct"
+fill <- c("#0F084B", "#3D60A7", "#A0D2E7")
+
+ pdf(file = "/mnt/Hallgrimsson/Users/Jovid/FB2_ML/figures/sorted_LOFOCV_HDRDA_sensitivity_n10_no_controls.pdf", width = 10, height = 5*.65)
+#png(filename = "/mnt/Hallgrimsson/Users/Jovid/FB2_ML/reveal_presentation/images/LOOCV_HDRDA_sensitivity.png", width = 2000, height = 1000)
+ggplot() + 
+  geom_bar(aes(y = sensuracy, x = id, fill = rank), data = model.rank.sens, stat="identity",  position = position_stack(reverse = T))  + 
+  #geom_hline(yintercept = .7, color = 2) + 
+  xlab("Syndrome") + 
+  ylab("Sensitivity") + 
+  scale_x_discrete(labels = gsub("\\.", " ", model.rank.sens$syndrome)) +
+  scale_fill_manual("Rank", values=fill, labels = c("Top choice", "Within top 3", "Within top 10")) +
+  theme_bw() +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5, size = 9.5),
+        plot.background = element_rect(fill = "transparent"),
+        legend.position = "none")
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5, size = 24.5), axis.title=element_text(size=27,face="bold"), legend.title=element_text(size=25, face="bold"), legend.text=element_text(size=25), legend.key.size =  unit(0.4, "in")) 
+ 
+dev.off()
+```
+
+
+
