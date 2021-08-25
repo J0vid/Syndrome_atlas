@@ -60,7 +60,8 @@ d.meta.combined %>%
 #get ranges for age by syndrome
 d.meta.combined %>%
   group_by(Syndrome) %>%
-  summarize(min_age = min(Age), max_age = max(Age))
+  summarize(min_age = min(Age), max_age = max(Age)) %>%
+  View()
 
 #get scores, min and max per syndrome
 d.meta.combined2 <- cbind(d.meta.combined, PC.scores)

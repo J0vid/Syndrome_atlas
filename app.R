@@ -18,9 +18,9 @@ library(grid)
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
  load("data.Rdata")
  load("modules_PCA.Rdata")
- # eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
+ eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
  
- # load("~/shiny/shinyapps/Syndrome_model copy/FB2_texture_PCA.Rdata")
+ load("~/shiny/shinyapps/Syndrome_model copy/FB2_texture_PCA.Rdata")
  
  predshape.lm <- function(fit, datamod, PC, mshape){
    dims <- dim(mshape)
@@ -123,7 +123,7 @@ server <- function(input, output) {
   # atlas <- file2mesh("whoami2.ply", readcol = T)
   pred.mesh <- atlas 
   pred.mesh2 <- atlas
-  # texture.coefs <- lm(texture.pca$x[,1:2000] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
+  texture.coefs <- lm(texture.pca$x[,1:100] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
   # synd.lm.coefs <- lm(PC.scores ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
   
   #process reactive####
@@ -157,8 +157,8 @@ server <- function(input, output) {
   })
   
   debounced.inputs <- reactive({
-    return(list(input$dynamic_age, input$severity))
-  }) %>% debounce(2000)
+    return(list(input$dynamic_age, input$severity)) 
+  }) %>% debounce(1)
   
   
   pred.synd <- eventReactive(input$Update, {
@@ -355,30 +355,7 @@ server <- function(input, output) {
     
     # par3d(userMatrix = matrix(c(.998,-.005,.0613,0,.0021,.999,.045,0,-.061,-.045,.997,0,0,0,0,1),ncol = 4,nrow = 4))
     # par3d(userMatrix = front.face)
-    # 
-    # #texture simulation####
-    # datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
-    # predicted.texture <- predtexture.lm(texture.coefs, datamod, texture.pca$rotation[,1:2000], texture.pca$center)
-    # 
-    # predicted.texture3d <- row2array3d(predicted.texture)[,,1]
-    # 
-    # starting.texture <- matrix(NA, nrow = length(atlas$material$color), ncol = 3)
-    # for(j in 1:length(atlas$material$color)) starting.texture[j,] <- col2rgb(atlas$material$color[j])
-    # 
-    # final.texture <- starting.texture
-    # # final.texture[brow.index,] <- starting.texture[brow.index,] + predicted.texture3d[brow.index,]
-    # # final.texture[-brow.index,1] <- final.texture[-brow.index,1]  + colMeans(predicted.texture3d[brow.index,])[1]
-    # # final.texture[-brow.index,2] <- final.texture[-brow.index,2]  + colMeans(predicted.texture3d[brow.index,])[2]
-    # # final.texture[-brow.index,3] <- final.texture[-brow.index,3]  + colMeans(predicted.texture3d[brow.index,])[3]
-    # final.texture <-  (predicted.texture3d) + starting.texture
-    # 
-    # 
-    # #scale values
-    # maxs <- apply(final.texture, 2, max)
-    # mins <- apply(final.texture, 2, min)
-    # additive.texture <- scale(final.texture, center = mins, scale = maxs - mins)
-    # hex.mean <- rgb(additive.texture, maxColorValue = 1)
-    # test$mesh$material$color[-eye.index] <- hex.mean[-eye.index]
+
     # 
     # 
     #   par3d(userMatrix = front.face)
@@ -399,9 +376,47 @@ server <- function(input, output) {
       mesh.color <- "lightgrey"
       lit <- T}
     if(input$texture == "Gestalt"){ 
+      #texture simulation####
+      datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+      predicted.texture <- predtexture.lm(texture.coefs, datamod, texture.pca$rotation[,1:100], texture.pca$center)
+      
+      predicted.texture3d <- row2array3d(predicted.texture)[,,1]
+      
+      final.texture <-  (predicted.texture3d)
+      
+      #scale values
+      maxs <- apply(final.texture, 2, max)
+      mins <- apply(final.texture, 2, min)
+      additive.texture <- scale(final.texture, center = mins, scale = maxs - mins)
+      hex.mean <- rgb(additive.texture, maxColorValue = 1)
+      test$mesh$material$color[-eye.index] <- hex.mean[-eye.index]
       mesh.color <- test$mesh$material$color
       lit <- F}
-    if(input$texture == "Gestalt + Generic"){ 
+    if(input$texture == "Generic + Gestalt"){ 
+
+      #texture simulation####
+      datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+      predicted.texture <- predtexture.lm(texture.coefs, datamod, texture.pca$rotation[,1:100], texture.pca$center)
+      
+      predicted.texture3d <- row2array3d(predicted.texture)[,,1]
+      
+      starting.texture <- matrix(NA, nrow = length(atlas$material$color), ncol = 3)
+      for(j in 1:length(atlas$material$color)) starting.texture[j,] <- col2rgb(atlas$material$color[j])
+      
+      final.texture <- starting.texture
+      # final.texture[brow.index,] <- starting.texture[brow.index,] + predicted.texture3d[brow.index,]
+      # final.texture[-brow.index,1] <- final.texture[-brow.index,1]  + colMeans(predicted.texture3d[brow.index,])[1]
+      # final.texture[-brow.index,2] <- final.texture[-brow.index,2]  + colMeans(predicted.texture3d[brow.index,])[2]
+      # final.texture[-brow.index,3] <- final.texture[-brow.index,3]  + colMeans(predicted.texture3d[brow.index,])[3]
+      final.texture <-  2*(predicted.texture3d) + starting.texture
+      
+      
+      #scale values
+      maxs <- apply(final.texture, 2, max)
+      mins <- apply(final.texture, 2, min)
+      additive.texture <- scale(final.texture, center = mins, scale = maxs - mins)
+      hex.mean <- rgb(additive.texture, maxColorValue = 1)
+      test$mesh$material$color[-eye.index] <- hex.mean[-eye.index]
       mesh.color <- test$mesh$material$color
       lit <- F}
     
