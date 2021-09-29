@@ -1,7 +1,7 @@
-#syndrome gestalts w/age flexibility
+#syndrome gestalts w/age flexibility and face submission/classification
 library(shiny)
 library(Morpho)
-# library(geomorph)
+library(geomorph)
 library(rgl)
 library(shinycssloaders)
 library(Jovid)
@@ -11,16 +11,24 @@ library(plotly)
 library(ggrepel)
 library(shinyBS)
 library(grid)
+library(mesheR)
+library(RvtkStatismo)
+options(shiny.maxRequestSize=300*1024^2)
 
 # meta.lm, d.registered
- setwd("~/shiny/shinyapps/Syndrome_model/")
+ setwd("~/shiny/Syndrome_atlas/")
+ test.atlas <- file2mesh("atlas.ply")
+ atlas.points <- read.table("atlas_lm_5.txt")
+ # atlas <- test.atlas
+ a.man.lm <- as.matrix(atlas.points)
+ atlas.lms <- as.matrix(atlas.points)
  # setwd("/srv/shiny-server/testing_ground/")
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
- load("data.Rdata")
- load("modules_PCA.Rdata")
- eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
- 
- load("~/shiny/shinyapps/Syndrome_model copy/FB2_texture_PCA.Rdata")
+
+load("data.Rdata")
+load("modules_PCA.Rdata")
+eye.index <- as.numeric(read.csv("eye_lms.csv", header = F)) + 1
+load("FB2_texture_PCA.Rdata")
  
  predshape.lm <- function(fit, datamod, PC, mshape){
    dims <- dim(mshape)
@@ -89,11 +97,22 @@ ui <- fluidPage(
                                 trigger = "hover", 
                                 options = list(container = "body")
                       )),
+      conditionalPanel(condition = "input.Atlas_tabs=='Submitted face'",
+                       fileInput("file1", "",
+                                 multiple = T,
+                                 accept = c(".obj", ".ply", ".png", ".pp", ".csv")),
+                       splitLayout(cellWidths = c("50%", "50%"),
+                                   textInput("current_age", label = "Age (years)", value = "", placeholder = "ie. 9.5"),
+                                   selectInput("current_sex", label = "Sex", selected = "Male", choices = c("Male", "Female"))
+                       ),
+                       checkboxGroupInput("submitted_heatmap", label = "Morphology", choices = "Compare to syndrome?"),
+                       conditionalPanel(condition = "input.submitted_heatmap == 'Compare to syndrome?'",
+                       selectInput("submitted_comp", label = "Syndrome", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Costello Syndrome")),
+                       ),
       width = 3, 
       tags$head(
         tags$link(rel = "stylesheet", type = "text/css", href = "style.css")
-      )
-    ),
+      )),
     
     mainPanel(
       tabsetPanel(id = "Atlas_tabs",#img(src='uc_logo.jpg', align = "right", height = 70 * 1.15, width = 90 * 1.25),
@@ -106,6 +125,10 @@ ui <- fluidPage(
                  br(), plotOutput("morphospace")),
         tabPanel("Segments", br(), HTML("<p style=\"color:black;\">Select a facial partition using the dropdown menu or by clicking the bubbles directly.</p>"), 
                  visNetworkOutput("network", height="80vh")),
+        tabPanel("Submitted face", br(),
+                 withSpinner(rglwidgetOutput("submitted_face", width = "65vw", height="80vh"), type = 6, color = "#fca311"),
+                 br(),
+                 plotlyOutput("posterior_scree")),
         # tabPanel("Morphospace", br(), plotOutput("morphospace")),
         tabPanel("About", br(), HTML("<p style=\"color:black;\">This app aims to help clinical geneticists better understand the characteristic craniofacial features of various genetic syndromes. There are 3 sections to this app and here is my description of how they work. Here are the people that made this app possible.</p>"))#, 
         #includeHTML("~/shiny/shinyapps/Syndrome_gestalts/about_test.html"), 
@@ -115,6 +138,7 @@ ui <- fluidPage(
     )
   )
 )
+
 
 
 server <- function(input, output) {
@@ -194,8 +218,6 @@ server <- function(input, output) {
     return(list(predicted.shape, selected.synd, selected.age, selected.severity))
     
   })
-  
-  
   
   #module selection####
   output$network <- renderVisNetwork({
@@ -543,6 +565,102 @@ server <- function(input, output) {
   })
   
   
+  mesh.et.lms <- eventReactive(input$file1, {
+    print(input$file1)
+    # file.mesh <- file2mesh("/mnt/Hallgrimsson/Users/Jovid/Andlit/baking/DavidAponte.ply")
+    # file.mesh <- file2mesh("~/shiny/Syndrome_atlas/GCS_1.ply")
+    file.mesh <- file2mesh(input$file1$datapath[grepl("*.ply", input$file1$datapath)])
+    # file.name <- substr(input$file1$name, start = 1, stop = nchar(input$file1$name) - 4)
+    file.name <- "test"
+    # file.lms <- read.mpp("/mnt/Hallgrimsson/Users/Jovid/Andlit/baking/DavidAponte_picked_points.pp")
+    file.lms <- read.mpp(input$file1$datapath[grepl("*.pp", input$file1$datapath)])
+    # file.lms <- read.mpp("/mnt/Hallgrimsson/Users/Jovid/FB2_ML/sylvia_picked_points.pp")
+    # file.lms <- read.mpp("~/shiny/Syndrome_atlas/GCS_1_picked_points.pp")
+    
+    tmp.fb <- rotmesh.onto(file.mesh, refmat = file.lms, tarmat = a.man.lm, scale = T)
+    gp.fb <- tmp.fb$yrot
+    
+    tmp.fb <- tmp.fb$mesh
+    
+    Kernels <- IsoKernel(0.1,atlas)
+    mymod <- statismoModelFromRepresenter(test.atlas,kernel=Kernels,ncomp=100)
+    postDef <- posteriorDeform(mymod, tmp.fb, modlm = atlas.lms, samplenum = 1000)
+    
+    withProgress(message = 'Fitting mesh', value = 0, {
+      
+      for (i in 1:7) {
+        # Increment the progress bar, and update the detail text.
+        incProgress(1/7, detail = c(rep("Shaping, thinking, doing...", 4), "Coffee break?", "Non-rigid deformation", "Last few measurements")[i])
+        
+        if(i < 4) postDef <- posteriorDeform(mymod, tmp.fb, modlm = a.man.lm, tarlm = gp.fb, samplenum = 1000, reference = postDef)
+        
+        if(i > 4){
+          postDefFinal <- postDef
+          postDefFinal <- posteriorDeform(mymod, tmp.fb, modlm=atlas.lms, samplenum = 3000, reference = postDefFinal, deform = T, distance = 3)
+        }
+      }
+      
+    })
+    
+    # atlas.map <- c(6532,6632,4355,4188, 5368, 5629, 5373, 5452,5156, 5404, 4845, 6740, 6715, 6537, 3660, 2527, 2210, 4358, 2303, 4625, 3950, 4516, 5328, 4144, 5709, 821, 617, 1765, 6306, 1693, 1195, 2677, 1778, 3845, 4006, 5332, 2537, 6500, 3089, 2488, 3441, 2685, 2233, 4283, 2382, 4881, 4115, 4603, 5258, 3974, 1086, 807, 649, 1807, 1804, 6068, 5768, 2531, 1615, 4030, 4157, 5166, 2426, 3208, 6557)
+    
+    return(list(postDefFinal, file.name, file.mesh))
+  })
+  
+  
+  output$submitted_face <- renderRglwidget({
+    pdf(NULL)
+    dev.off()
+    
+    par3d(userMatrix = diag(4), zoom = .75)
+    bg3d(color = "#e5e5e5")
+    plot3d(mesh.et.lms()[[1]], col = "lightgrey", axes = F, specular = 1, xlab = "", ylab = "", zlab = "", aspect = "iso")  
+    rglwidget()
+    
+    #if heatmap, register face, make comp same age?, compare
+    
+  })
+  
+  output$posterior_scree <- renderPlotly({
+    sample1k <- sample(1:27903, 1000)
+    #register landmarks to the space
+    registered.mesh <- t(rotmesh.onto(mesh.et.lms()[[1]], t(mesh.et.lms()[[1]]$vb[-4, sample1k]), FB2.mean[sample1k,], scale = T)$mesh$vb[-4,])
+    #testing: 
+    # test.mesh <- file2mesh("/mnt/Hallgrimsson/Users/Jovid/Andlit/baking/davida_registered.ply")
+    # registered.mesh <- t(rotmesh.onto(test.mesh, t(test.mesh$vb[-4, sample1k]), FB2.mean[sample1k,], scale = T)$mesh$vb[-4,])
+    #project mesh lms into FB2 PC space
+    projected.mesh <- getPCscores(registered.mesh, FB2.vectors, FB2.mean)
+    
+    #remove the fitted values, add residuals to the coefficients
+    # age <- 31
+    
+    if(input$current_age == ""){ age <- 20
+    } else{age <- as.numeric(input$current_age)}
+    sex <- as.numeric(input$current_sex == "Male")
+  
+    fitted.ind <- age * FB2.coefs[3,] + age^2 * FB2.coefs[4,] + age^3 * FB2.coefs[5,] + FB2.coefs[1,] + sex * FB2.coefs[2,]
+
+    projected.residuals <- projected.mesh - fitted.ind
+    
+    #classify individual's scores using the model
+    colnames(projected.residuals) <- colnames(FB2.scores)
+    
+    posterior.distribution <- predict(HDRDA.mod, newdata = rbind(projected.residuals, projected.residuals), type = "prob")$post[1,]
+    
+    posterior.distribution <- sort(posterior.distribution, decreasing = T)
+    
+    #used to be part of plot.df: ID = as.factor(1:10), 
+    plot.df <- data.frame(Probs = round(as.numeric(posterior.distribution[1:10]), digits = 4), Syndrome = as.factor(names(posterior.distribution[1:10])))
+    plot.df$Syndrome <- as.character(plot.df$Syndrome)
+    plot.df$Syndrome[plot.df$Syndrome == "Unrelated Unaffected"] <- "Non-syndromic"
+    
+    plot_ly(data = plot.df, x = ~Syndrome, y = ~Probs, type = "bar", color = I("grey"), hoverinfo = paste0("Syndrome: ", "x", "<br>", "Probability: ", "y")) %>%
+      layout(xaxis = list(tickvals = gsub("_", " ", plot.df$Syndrome), tickangle = 45, ticktext = c(Syndrome = plot.df$Syndrome, Probability = plot.df$Probs), title = "<b>Syndrome</b>"),
+             yaxis = list(title = "<b>Class probability</b>"),
+             paper_bgcolor='#e5e5e5',
+             margin = list(b = 125, l = 50, r = 100)
+      )
+  })
   
 }
 
