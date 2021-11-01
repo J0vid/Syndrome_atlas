@@ -264,8 +264,9 @@ server <- function(input, output) {
     
     clear3d()
     #visualize full model estimates####
-     if(input$sex == "Female"){selected.sex <-1
-     } else if(input$sex == "Male"){selected.sex <- 0} 
+     # if(input$sex == "Female"){selected.sex <-1
+     # } else if(input$sex == "Male"){selected.sex <- 0} 
+    selected.sex <- input$sex
     # selected.age <- input$age
     
     # if(is.null(debounced.inputs()[[1]])){ selected.age <- 12 } else{
@@ -337,48 +338,28 @@ server <- function(input, output) {
       lit <- T}
     if(input$texture == "Gestalt"){ 
       #texture simulation####
-      datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
-      predicted.texture <- predtexture.lm(texture.coefs, datamod, texture.pca$rotation[,1:100], texture.pca$center)
+      raw_api_res <- httr::GET(url = paste0("http://localhost:9038", "/predtexture"),
+                               query = list(selected.sex = selected.sex, selected.age = selected.age, selected.synd = selected.synd),
+                               encode = "json")
       
-      predicted.texture3d <- row2array3d(predicted.texture)[,,1]
-      
-      final.texture <-  (predicted.texture3d)
-      
-      #scale values
-      maxs <- apply(final.texture, 2, max)
-      mins <- apply(final.texture, 2, min)
-      additive.texture <- scale(final.texture, center = mins, scale = maxs - mins)
-      hex.mean <- rgb(additive.texture, maxColorValue = 1)
+      hex.mean  <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))
       test$mesh$material$color[-eye.index] <- hex.mean[-eye.index]
       mesh.color <- test$mesh$material$color
-      lit <- F}
+      lit <- F
+      }
     if(input$texture == "Generic + Gestalt"){ 
 
       #texture simulation####
-      datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
-      predicted.texture <- predtexture.lm(texture.coefs, datamod, texture.pca$rotation[,1:100], texture.pca$center)
+     
+      raw_api_res <- httr::GET(url = paste0("http://localhost:9038", "/predtexture"),
+                               query = list(selected.sex = selected.sex, selected.age = selected.age, selected.synd = selected.synd, gestalt_combo = T),
+                               encode = "json")
       
-      predicted.texture3d <- row2array3d(predicted.texture)[,,1]
-      
-      starting.texture <- matrix(NA, nrow = length(atlas$material$color), ncol = 3)
-      for(j in 1:length(atlas$material$color)) starting.texture[j,] <- col2rgb(atlas$material$color[j])
-      
-      final.texture <- starting.texture
-      # final.texture[brow.index,] <- starting.texture[brow.index,] + predicted.texture3d[brow.index,]
-      # final.texture[-brow.index,1] <- final.texture[-brow.index,1]  + colMeans(predicted.texture3d[brow.index,])[1]
-      # final.texture[-brow.index,2] <- final.texture[-brow.index,2]  + colMeans(predicted.texture3d[brow.index,])[2]
-      # final.texture[-brow.index,3] <- final.texture[-brow.index,3]  + colMeans(predicted.texture3d[brow.index,])[3]
-      final.texture <-  2*(predicted.texture3d) + starting.texture
-      
-      
-      #scale values
-      maxs <- apply(final.texture, 2, max)
-      mins <- apply(final.texture, 2, min)
-      additive.texture <- scale(final.texture, center = mins, scale = maxs - mins)
-      hex.mean <- rgb(additive.texture, maxColorValue = 1)
+      hex.mean  <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))
       test$mesh$material$color[-eye.index] <- hex.mean[-eye.index]
       mesh.color <- test$mesh$material$color
-      lit <- F}
+      lit <- F
+      }
     
       plot3d(vcgSmooth(test$mesh), aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = lit, specular = 1, col = mesh.color)
       # plot3d(atlas, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F)
