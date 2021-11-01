@@ -19,8 +19,8 @@ library(grid)
  load("data.Rdata")
  load("modules_PCA.Rdata")
  eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
- 
- load("~/shiny/shinyapps/Syndrome_model copy/FB2_texture_PCA.Rdata")
+
+ # load("~/shiny/shinyapps/Syndrome_model/FB2_texture_PCA.Rdata")
  
  predshape.lm <- function(fit, datamod, PC, mshape){
    dims <- dim(mshape)
@@ -59,11 +59,10 @@ ui <- fluidPage(
       conditionalPanel(condition = "input.Atlas_tabs=='Gestalt'",
                        selectInput("synd", label = "Syndrome", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Costello Syndrome"),
                        selectInput("sex", label = "Sex", choices = c("Female", "Male")),
-      # sliderInput("age", label = "Age", min = 1, max = 50, step = 1, value = 12),
                       uiOutput("age_slider"),
                       uiOutput("severity_slider"),
                       bsButton("texture_help", label = "", icon = icon("question"), style = "default", size = "extra-small"),
-                      selectInput("texture", label = "Texture type", choices = c("Generic", "Lightgrey", "Gestalt", "Generic + Gestalt")),
+                      selectInput("texture", label = "Texture type", choices = c("Generic", "Lightgrey", "Gestalt", "Generic + Gestalt"), selected = "Lightgrey"),
                       bsPopover(id = "texture_help", title = "Plot types",
                                 content = paste0("Texture (mesh color) can be really helpful for understanding syndromic faces. By default, we provide a generic synthetic texture. If it does not fit the face features well, you can remove it by selecting lightgrey. You can also view syndromic texture or add syndromic aspects of texture to the generic mesh, but these feature are experimental and may not work well."
                                 ),
@@ -75,7 +74,8 @@ ui <- fluidPage(
       conditionalPanel(condition = "input.Atlas_tabs=='Comparisons'",
                       selectInput("reference", label = "Reference", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Unaffected Unrelated"),
                       selectInput("synd_comp", label = "Syndrome", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Costello Syndrome"),
-                      selectInput("sex", label = "Sex", choices = c("Female", "Male")),
+                      selectInput("comp_sex", label = "Sex", choices = c("Female", "Male")),
+                      sliderInput("comp_age", label = "Age", min = 1, max = 40, step = 1, value = 12),
                       # uiOutput("age_slider"),
                       sliderInput("transparency", label = "Mesh transparency", min = 0, max = 1, step = .1, value = 1),
                       checkboxInput("displace", label = "Plot vectors?", value = F),
@@ -103,9 +103,12 @@ ui <- fluidPage(
                  withSpinner(rglwidgetOutput("comparison", width = "65vw", height="80vh"), type = 6, color = "#fca311"),
                  br(),
                  HTML("<center><font style=\"color: red; font-size: xx-large;\"> Bigger </font><font style=\"color: #fcfcfc; font-size: xx-large;\"> | </font><font style=\"color: lightgreen; font-size: xx-large;\"> Similar </font><font style=\"color: #fcfcfc; font-size: xx-large;\"> | </font><font style=\"color: blue; font-size: xx-large;\"> Smaller </font></center>"),
-                 br(), plotOutput("morphospace")),
-        tabPanel("Segments", br(), HTML("<p style=\"color:black;\">Select a facial partition using the dropdown menu or by clicking the bubbles directly.</p>"), 
+                 br(), plotOutput("morphospace"),
+                 br(), 
+                 HTML("<p style=\"color:black;\">Select a facial partition using the dropdown menu or by clicking the bubbles directly.</p>"),
                  visNetworkOutput("network", height="80vh")),
+        # tabPanel("Segments", br(), HTML("<p style=\"color:black;\">Select a facial partition using the dropdown menu or by clicking the bubbles directly.</p>"), 
+        #          visNetworkOutput("network", height="80vh")),
         # tabPanel("Morphospace", br(), plotOutput("morphospace")),
         tabPanel("About", br(), HTML("<p style=\"color:black;\">This app aims to help clinical geneticists better understand the characteristic craniofacial features of various genetic syndromes. There are 3 sections to this app and here is my description of how they work. Here are the people that made this app possible.</p>"))#, 
         #includeHTML("~/shiny/shinyapps/Syndrome_gestalts/about_test.html"), 
@@ -123,10 +126,10 @@ server <- function(input, output) {
   # atlas <- file2mesh("whoami2.ply", readcol = T)
   pred.mesh <- atlas 
   pred.mesh2 <- atlas
-  texture.coefs <- lm(texture.pca$x[,1:100] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
+  # texture.coefs <- lm(texture.pca$x[,1:100] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
   # synd.lm.coefs <- lm(PC.scores ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
   
-  #process reactive####
+  #synd reactive####
   outVar <- reactive({
     #get selected syndrome age range
     age.range <- d.meta.combined$Age[d.meta.combined$Syndrome == input$synd]
@@ -162,34 +165,21 @@ server <- function(input, output) {
   
   
   pred.synd <- eventReactive(input$Update, {
-    selected.synd <- factor(input$synd, levels = levels(d.meta.combined$Syndrome))
-    if(input$sex == "Female"){selected.sex <-1
-    } else if(input$sex == "Male"){selected.sex <- 0} 
+    selected.synd <- input$synd#factor(input$synd, levels = levels(d.meta.combined$Syndrome))
+    selected.sex <- input$sex
     # selected.age <- input$age
     
     if(is.null(debounced.inputs()[[1]])){ selected.age <- 12 } else{
       selected.age <- debounced.inputs()[[1]]
     }
     
-    # if(is.null(debounced.inputs()[[2]])){ selected.severity <- 0} else{
     selected.severity <- debounced.inputs()[[2]]
-    # }
-    # synd.lm.coefs.severity <- synd.lm.coefs
-    #old severity code: synd.lm.coefs.severity[grepl(pattern = input$synd, rownames(synd.lm.coefs)),] <- synd.lm.coefs.severity[grepl(pattern = input$synd, rownames(synd.lm.coefs)),] + (input$severity/100) * synd.lm.coefs.severity[grepl(pattern = input$synd, rownames(synd.lm.coefs)),]
-    datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
-    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+ 
+    raw_api_res <- httr::GET(url = paste0("http://localhost:9038", "/predshape"),
+                             query = list(selected.sex = selected.sex, selected.age = selected.age, selected.synd = selected.synd),
+                             encode = "json")
     
-    # S <- synd.lm.coefs[grepl(pattern = selected.synd, rownames(synd.lm.coefs)),][1,]
-    # Snorm <- S/sqrt(sum(S^2))
-    # syndscores.main <- PC.scores %*% Snorm
-    # 
-    # #solve for max in min syndromic severities
-    # 
-    # #if the mean is higher for the selected syndrome, then max is max
-    # meanscore.ns <- mean(syndscores.main[d.meta.combined$Syndrome == "Unaffected Unrelated"])
-    # meanscore.synd <- mean(syndscores.main[d.meta.combined$Syndrome == selected.synd])
-    # 
-    # 
+    predicted.shape  <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))/1e6
     
     return(list(predicted.shape, selected.synd, selected.age, selected.severity))
     
@@ -243,60 +233,28 @@ server <- function(input, output) {
     paste("Current node selection : ", input$network_selected)
   })
   
-  
+  #syndrome comparison reactive####
   syndrome_comps <- reactive({
+    comp_age <- input$comp_age
+    comp_sex <- input$comp_sex
+    reference <- input$reference
+    synd_comp <- input$synd_comp
     
-    selected.sex <- 1.5
-    selected.age <- 10
+    raw_api_res <- httr::GET(url = paste0("http://localhost:9038", "/synd_comp"),
+                             query = list(comp_age = comp_age, comp_sex = comp_sex, reference = reference, synd_comp = synd_comp, facial_subset = ""),
+                             encode = "json")
     
-    selected.synd <- factor(input$synd_comp, levels = levels(d.meta.combined$Syndrome))
+    json2list <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))
     
-    # datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    synd_mesh <- atlas
+    ref_mesh <- atlas
     
-    # predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    synd_mesh$vb[-4,] <- t(json2list$syndrome_pred)
+    ref_mesh$vb[-4,] <- t(json2list$reference_pred)
     
-    #synd
-    pred.mesh$vb[-4,] <-  t(synd.mat[,,unique(d.meta.combined$Syndrome) == input$synd_comp])
-    rigid.points <- sample(1:27000, 100)
-    reduce.mesh <-  sample(1:27000, 1000)
-    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), t(atlas$vb[1:3,rigid.points]))
-    # test <- rmVertex(test$mesh, index = reduce.mesh, keep = T)
-    #ref
-    pred.mesh$vb[-4,] <-  t(synd.mat[,,unique(d.meta.combined$Syndrome) == input$reference])
-    test2 <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), t(atlas$vb[1:3,rigid.points]))
-    # test2 <- rmVertex(test2$mesh, index = reduce.mesh, keep = T)
-    
-    #calculate syndrome severity scores for selected syndrome
-    #calculate score for the whole face
-    S <- synd.lm.coefs[grepl(pattern = input$synd_comp, rownames(synd.lm.coefs)),][1,]
-    Snorm <- S/sqrt(sum(S^2))
-    syndscores.main <- PC.scores %*% Snorm
-    
-    syndscores.df <- data.frame(Syndrome = d.meta.combined$Syndrome, face.score = syndscores.main)
-    syndscores.wholeface <- syndscores.df%>%
-      group_by(Syndrome) %>%
-      summarise(face_score = mean(face.score))
-    
-    # calculate score for the selected subregion
-    if(is.null(input$network_selected)) selected.node <- 1 else if(input$network_selected == ""){
-      selected.node <- 1} else{
-        selected.node <- as.numeric(input$network_selected)}
-
-    if(selected.node > 1){
-    subregion.coefs <- manova(get(paste0(tolower(colnames(modules)[selected.node]), ".pca"))$x ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
-    S <- subregion.coefs[grepl(pattern = input$synd_comp, rownames(subregion.coefs)),][1,]
-    print(rownames(subregion.coefs)[grepl(pattern = input$synd_comp, rownames(subregion.coefs))])
-    Snorm <- S/sqrt(sum(S^2))
-    syndscores.main <- get(paste0(tolower(colnames(modules)[selected.node]), ".pca"))$x %*% Snorm
-
-    syndscores.df <- data.frame(Syndrome = d.meta.combined$Syndrome, module.score = syndscores.main)
-    syndscores.module <- syndscores.df%>%
-      group_by(Syndrome) %>%
-      summarise(face_score = mean(module.score))
-    } else{syndscores.module <- syndscores.wholeface}
+    return(list(ref_mesh, synd_mesh, json2list$wholeface_scores, json2list$subregion_scores))
     
     
-    return(list(test2$mesh, test$mesh, syndscores.wholeface, syndscores.module))
   })
 
   
@@ -342,7 +300,9 @@ server <- function(input, output) {
       main.res <- matrix(t(PC.eigenvectors %*% (selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
   
     #add severity residuals
-    pred.mesh$vb[-4,] <-  t(pred.synd()[[1]] + main.res) #+ interaction.res)
+      print(range(pred.synd()[[1]]))
+      print(range(main.res * 1e4))
+    pred.mesh$vb[-4,] <-  t(pred.synd()[[1]] + main.res*1e4) #+ interaction.res)
     rigid.points <- sample(1:27000, 100)
     test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), t(atlas$vb[1:3,rigid.points]))
     
@@ -420,7 +380,7 @@ server <- function(input, output) {
       mesh.color <- test$mesh$material$color
       lit <- F}
     
-      plot3d(test$mesh, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = lit, specular = 1, col = mesh.color)
+      plot3d(vcgSmooth(test$mesh), aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = lit, specular = 1, col = mesh.color)
       # plot3d(atlas, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = F)
       par3d(zoom = .83)
       # bg3d("#e5e5e5")
@@ -446,9 +406,9 @@ server <- function(input, output) {
       mD.synd <- meshDist(syndrome_comps()[[1]], syndrome_comps()[[2]], plot = F, scaleramp = F, displace = input$displace, alpha = input$transparency)
       a <- render(mD.synd, displace = T, alpha = input$transparency)
     } else if(input$displace == F & input$synd_comp != input$reference & selected.node == 1){
-      
-      mD.synd <- meshDist(syndrome_comps()[[1]], syndrome_comps()[[2]], plot = F, scaleramp = F, displace = input$displace, alpha = input$transparency)
-      a <- render(mD.synd, displace = F, alpha = input$transparency)
+      print(syndrome_comps())
+      mD.synd <- meshDist(syndrome_comps()[[1]], syndrome_comps()[[2]], plot = F, scaleramp = F)
+      a <- render(mD.synd, alpha = input$transparency)
       
     }
     
