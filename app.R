@@ -18,7 +18,11 @@ library(grid)
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
  load("data.Rdata")
  load("modules_PCA.Rdata")
+<<<<<<< HEAD
  eye.index <- as.numeric(read.csv("~/shiny/shinyapps/Syndrome_model/lm_indices/eye_small.csv", header = F)) +1#as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
+=======
+ eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
+>>>>>>> 943bf2ee67f345af2b07d1d281f463ea64dc25be
 
  # load("~/shiny/shinyapps/Syndrome_model/FB2_texture_PCA.Rdata")
  
