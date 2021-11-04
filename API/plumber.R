@@ -1,6 +1,8 @@
 library(plumber)
 library(future)
-
+library(Jovid)
+library(dplyr)
+future::plan("multisession")
 
 setwd("~/shiny/shinyapps/Syndrome_model/")
 # setwd("/srv/shiny-server/testing_ground/")
@@ -10,6 +12,9 @@ load("modules_PCA.Rdata")
 eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
 load("~/shiny/shinyapps/Syndrome_model/FB2_texture_PCA.Rdata")
 texture.coefs <- lm(texture.pca$x[,1:300] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
+texture.pcs <-  texture.pca$rotation[,1:300]
+texture.mean <- texture.pca$center
+
 
 predshape.lm <- function(fit, datamod, PC, mshape){
   dims <- dim(mshape)
@@ -69,9 +74,9 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
   selected.age <- as.numeric(selected.age)
   
   datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
- 
+ future({
   predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
-  
+ })
   # json rounds small numbers, let's multiply the scale to recover that info
 
 }
@@ -91,6 +96,8 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
   datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
   print(selected.synd)
   print(selected.sex)
+  
+  future({
   predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
   
   tmp.mesh <- atlas
@@ -98,7 +105,7 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
   
   plot3d(Rvcg::vcgSmooth(tmp.mesh), aspect = "iso", box = F, axes = F, specular = 1, col = "lightgrey")
   rglwidget()
-  
+  })
   
 }
 
@@ -118,6 +125,7 @@ function(comp_age = 12, comp_sex = "Female", reference = "Unaffected Unrelated",
   } else if(comp_sex == "Male"){selected.sex <- 0} 
   selected.age <- as.numeric(comp_age)
   
+  future({
   datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
   synd.pred <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
   
@@ -155,8 +163,11 @@ function(comp_age = 12, comp_sex = "Female", reference = "Unaffected Unrelated",
       summarise(face_score = mean(module.score))
   } else{syndscores.module <- syndscores.wholeface}
   
+  list(reference_pred = ref.pred, syndrome_pred = synd.pred, wholeface_scores = syndscores.wholeface, subregion_scores = syndscores.module)
   
-  return(list(reference_pred = ref.pred, syndrome_pred = synd.pred, wholeface_scores = syndscores.wholeface, subregion_scores = syndscores.module))
+  }) #end future
+  
+  
 }
 
 #* generate atlas prediction for texture (vertex colors)
@@ -172,9 +183,11 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
   
   datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
   
-  predicted.texture <- predtexture.lm(texture.coefs[,1:300], datamod, texture.pca$rotation[,1:300], texture.pca$center, gestalt_combo = gestalt_combo)
   
-  return(predicted.texture)
+  future({
+  predicted.texture <- predtexture.lm(texture.coefs[,1:300], datamod, texture.pcs, texture.mean, gestalt_combo = gestalt_combo)
+  })
+  
 }
 
 
