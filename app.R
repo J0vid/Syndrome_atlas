@@ -54,6 +54,140 @@ library(grid)
    # rownames(pred) <- names
    return(out)
  }
+ 
+ render <- function(x,...) UseMethod("render")
+ 
+ render.meshDist <- function(x,from=NULL,to=NULL,steps=NULL,ceiling=NULL,uprange=NULL,tol=NULL,tolcol=NULL,rampcolors=NULL,NAcol=NULL,displace=FALSE,shade=TRUE,sign=NULL,add=FALSE,scaleramp=NULL,titleplot="Distance in mm",...) {
+   clost <- x$clost
+   dists <- x$dists
+   distsOrig <- dists
+   colorall <- x$cols
+   colramp <- x$colramp
+   params <- x$params
+   distqual <- x$distqual
+   if (!is.null(tolcol))
+     tolcol <- colorRampPalette(tolcol)(1)
+   if (!add) {
+     if (rgl.cur() !=0)
+       rgl.clear()
+   }
+   if (!is.null(from) || !is.null(to) || !is.null(uprange) ||  !is.null(tol)  ||  !is.null(sign) || !is.null(steps) || !is.null(rampcolors) || !is.null(NAcol) || !is.null(tolcol) || !is.null(scaleramp)) {
+     neg=FALSE
+     colMesh <- x$colMesh
+     if(is.null(steps))
+       steps <- x$params$steps
+     if (is.null(rampcolors))
+       rampcolors <- x$params$rampcolors
+     if (is.null(NAcol))
+       NAcol <- x$params$NAcol
+     if (is.null(tolcol))
+       tolcol <- x$params$tolcol
+     if (is.null(tol))
+       tol <- x$params$tol
+     if(is.null(sign))
+       sign <- x$params$sign
+     if (!sign) {
+       distsOrig <- dists
+       dists <- abs(dists)
+     }
+     if(is.null(ceiling))
+       ceiling <- x$params$ceiling
+     if(is.null(uprange))
+       uprange <- x$params$uprange
+     
+     if (is.null(from)) {
+       mindist <- min(dists)
+       if (sign && mindist < 0 ) {
+         from <- quantile(dists,probs=(1-uprange)) 
+         neg <- TRUE            
+       } else {
+         from <- 0
+       }             
+     }
+     if (is.null(scaleramp))
+       scaleramp <- x$params$scaleramp
+     
+     if (from < 0)
+       neg <- TRUE
+     if (is.null(to))
+       to <- quantile(dists,probs=uprange)    
+     if(ceiling)
+       to <- ceiling(to)
+     
+     to <- to+1e-10
+     #ramp <- blue2green2red(maxseq*2)
+     ramp <- colorRampPalette(rampcolors)(steps-1)
+     colseq <- seq(from=from,to=to,length.out=steps)
+     coldif <- colseq[2]-colseq[1]
+     if (neg && sign) {
+       
+       negseq <- length(which(colseq<0))
+       poseq <- steps-negseq
+       maxseq <- max(c(negseq,poseq))
+       if (scaleramp) {
+         ramp <- colorRampPalette(rampcolors)(maxseq*2)
+         ramp <- ramp[c(maxseq-negseq+1):(maxseq+poseq)]
+         
+       }
+       else
+         ramp <- colorRampPalette(rampcolors)(steps-1)
+       distqual <- ceiling(((dists+abs(from))/coldif)+1e-14)
+       #distqual[which(distqual < 1)] <- steps+10
+     } else if (from > 0) {
+       distqual <- ceiling(((dists-from)/coldif)+1e-14)
+     } else {
+       distqual <- ceiling((dists/coldif)+1e-14)
+     }
+     distqual[which(distqual < 1)] <- steps+10
+     colorall <- ramp[distqual]
+     if (!is.null(tol)) {
+       if ( length(tol) < 2 ) {
+         if (sign) {
+           tol <- c(-tol,tol)
+         } else {
+           tol <- c(0,tol)
+         }
+       }
+       good <- which(abs(dists) < tol[2])
+       colorall[good] <- tolcol
+     }
+     colfun <- function(x){x <- colorall[x];return(x)}
+     colMesh$material$color <- colorall
+     colMesh$material$color[is.na(colMesh$material$color)] <- NAcol
+     #colMesh$material$color <- matrix(colfun(colMesh$it),dim(colMesh$it))
+     colramp <- list(1,colseq, matrix(data=colseq, ncol=length(colseq),nrow=1),col=ramp,useRaster=T,ylab=titleplot,xlab="",xaxt="n")
+   } else {
+     if (is.null(tol))
+       tol <- x$params$tol
+     colramp <- x$colramp
+     colMesh <- x$colMesh
+   }
+   if (is.null(tolcol))
+     tolcol <- x$params$tolcol
+   
+   if (shade)
+     shade3d(vcgUpdateNormals(colMesh),specular="black",...)
+   if (displace) {
+     dismesh <- colMesh
+     vl <- dim(colMesh$vb)[2]
+     dismesh$vb <- cbind(colMesh$vb,rbind(clost,1))
+     dismesh$it <- rbind(1:vl,1:vl,(1:vl)+vl)
+     dismesh$material$color <- colorall
+     dismesh$normals <- cbind(dismesh$normals, dismesh$normals)
+     wire3d(dismesh,lit=FALSE)
+   }
+   diffo <- ((colramp[[2]][2]-colramp[[2]][1])/2)
+   image(colramp[[1]],colramp[[2]][-1]-diffo,t(colramp[[3]][1,-1])-diffo,col=colramp[[4]],useRaster=TRUE,ylab=titleplot,xlab="",xaxt="n")
+   if (!is.null(tol)) {
+     if (sum(abs(tol)) != 0)
+       image(colramp[[1]],c(tol[1],tol[2]),matrix(c(tol[1],tol[2]),1,1),col=tolcol,useRaster=TRUE,add=TRUE)
+   }
+   params <- list(steps=steps,from=from,to=to,uprange=uprange,ceiling=ceiling,sign=sign,tol=tol,rampcolors=rampcolors,NAcol=NAcol,tolcol=tolcol)
+   out <- list(colMesh=colMesh,dists=distsOrig,cols=colorall,colramp=colramp,params=params,distqual=distqual,clost=clost)
+   
+   class(out) <- "meshDist"
+   invisible(out)
+ }
 
 ui <- fluidPage(
   
@@ -92,7 +226,8 @@ ui <- fluidPage(
                                 placement = "right", 
                                 trigger = "hover", 
                                 options = list(container = "body")
-                      )),
+                      ),
+                      actionButton("update_comp", "Update Comparison", icon("refresh"))),
       width = 3, 
       tags$head(
         tags$link(rel = "stylesheet", type = "text/css", href = "style.css")
@@ -109,11 +244,15 @@ ui <- fluidPage(
                  HTML("<center><font style=\"color: red; font-size: xx-large;\"> Bigger </font><font style=\"color: #fcfcfc; font-size: xx-large;\"> | </font><font style=\"color: lightgreen; font-size: xx-large;\"> Similar </font><font style=\"color: #fcfcfc; font-size: xx-large;\"> | </font><font style=\"color: blue; font-size: xx-large;\"> Smaller </font></center>"),
                  br(), plotOutput("morphospace"),
                  br(), 
-                 HTML("<p style=\"color:black;\">Select a facial partition using the dropdown menu or by clicking the bubbles directly.</p>"),
+                 HTML("<h3 style=\"color:black; text-align:center\">Select a facial partition by clicking the bubbles directly and then update the comparison.</h2>"),
                  visNetworkOutput("network", height="80vh")),
         # tabPanel("Segments", br(), HTML("<p style=\"color:black;\">Select a facial partition using the dropdown menu or by clicking the bubbles directly.</p>"), 
         #          visNetworkOutput("network", height="80vh")),
         # tabPanel("Morphospace", br(), plotOutput("morphospace")),
+        tabPanel("Submitted face", br(),
+                 withSpinner(rglwidgetOutput("submitted_face", width = "65vw", height="80vh"), type = 6, color = "#fca311"),
+                 br(),
+                 plotlyOutput("posterior_scree")),
         tabPanel("About", br(), HTML("<p style=\"color:black;\">This app aims to help clinical geneticists better understand the characteristic craniofacial features of various genetic syndromes. There are 3 sections to this app and here is my description of how they work. Here are the people that made this app possible.</p>"))#, 
         #includeHTML("~/shiny/shinyapps/Syndrome_gestalts/about_test.html"), 
         #includeCSS("~/shiny/shinyapps/Syndrome_gestalts/test.css"))
@@ -179,7 +318,7 @@ server <- function(input, output) {
     
     selected.severity <- debounced.inputs()[[2]]
  
-    raw_api_res <- httr::GET(url = paste0("http://localhost:9038", "/predshape"),
+    raw_api_res <- httr::GET(url = paste0("http://localhost:6352", "/predshape"),
                              query = list(selected.sex = selected.sex, selected.age = selected.age, selected.synd = selected.synd),
                              encode = "json")
     
@@ -201,17 +340,17 @@ server <- function(input, output) {
     # nodes <- data.frame(id = 1:31, label = 1:31, shape = "image", image = "https://genopheno.ucalgary.ca/presentations/Child_health_data_science_Aponte/images/atlas.png", value = c(rep(10,21), rep(5,10)))
     # edges <- data.frame(from = rep(1:15, each = 2), to = 2:31)#c(2,3,4,5,6,7,8,9,10,11,12,13,14,15))
     # 15 modules
-    path_to_images <- "https://raw.githubusercontent.com/J0vid/Syndrome_atlas/master/mod_images/" #"https://genopheno.ucalgary.ca/presentations/Child_health_data_science_Aponte/mod_images/"
+    path_to_images <- "https://raw.githubusercontent.com/J0vid/Syndrome_atlas/main/mod_images/" #"https://genopheno.ucalgary.ca/presentations/Child_health_data_science_Aponte/mod_images/"
     module.names <- c("Whole face", "Nose", "Mandible/Sphenoid/Frontal", "Upper lip", "Nasal/Maxilla subset", "Cheek/Mandible", "Sphenoid/Frontal", "Nasolabial", "Philtrum", "Lateral Nasal", "Nose", "Cheek", "Chin/Mandible", "Frontal", "Orbital/Temporal/Sphenoid")
-    module.names[1:8] <- c("Whole Face", "Nose", "Eyes", "Jaw", "Chin", "Mouth", "Cheeks", "Forehead")
-    nodes <- data.frame(id = 1:8, label = module.names[1:8], title = module.names[1:8], shape = "circularImage", color = "#fca311", color.highlight = "#fca311", image = paste0(path_to_images, "mod", 1:8, ".png"))#, value = c(rep(130,7), rep(130,8)))
-    edges <- data.frame(from = 1, to = 2:8)
+    module.names[1:7] <- c("face", "posterior_mandible", "nose", "anterior_mandible", "brow", "zygomatic", "premaxilla") #c("Whole Face", "Nose", "Eyes", "Jaw", "Chin", "Mouth", "Cheeks")
+    nodes <- data.frame(id = 1:7, label = module.names[1:7], title = module.names[1:7], shape = "circularImage", color = "#fca311", color.highlight = "#fca311", image = paste0(path_to_images, "mod", 1:7, ".png"))#, value = c(rep(130,7), rep(130,8)))
+    edges <- data.frame(from = 1, to = 2:7)
     
     visNetwork(nodes, edges)  %>%
       visInteraction(hover = F,
                      dragNodes = T,
                      dragView = T) %>%
-      visOptions(nodesIdSelection = list(enabled = TRUE, 
+      visOptions(nodesIdSelection = list(enabled = F, 
                                          selected = "1"),
                  highlightNearest = F
       ) %>% 
@@ -238,13 +377,13 @@ server <- function(input, output) {
   })
   
   #syndrome comparison reactive####
-  syndrome_comps <- reactive({
+  syndrome_comps <- eventReactive(input$update_comp, {
     comp_age <- input$comp_age
     comp_sex <- input$comp_sex
     reference <- input$reference
     synd_comp <- input$synd_comp
     
-    raw_api_res <- httr::GET(url = paste0("http://localhost:9038", "/synd_comp"),
+    raw_api_res <- httr::GET(url = paste0("http://localhost:6352", "/synd_comp"),
                              query = list(comp_age = comp_age, comp_sex = comp_sex, reference = reference, synd_comp = synd_comp, facial_subset = ""),
                              encode = "json")
     
@@ -342,7 +481,7 @@ server <- function(input, output) {
       lit <- T}
     if(input$texture == "Gestalt"){ 
       #texture simulation####
-      raw_api_res <- httr::GET(url = paste0("http://localhost:9038", "/predtexture"),
+      raw_api_res <- httr::GET(url = paste0("http://localhost:6352", "/predtexture"),
                                query = list(selected.sex = selected.sex, selected.age = selected.age, selected.synd = selected.synd),
                                encode = "json")
       
@@ -355,7 +494,7 @@ server <- function(input, output) {
 
       #texture simulation####
      
-      raw_api_res <- httr::GET(url = paste0("http://localhost:9038", "/predtexture"),
+      raw_api_res <- httr::GET(url = paste0("http://localhost:6352", "/predtexture"),
                                query = list(selected.sex = selected.sex, selected.age = selected.age, selected.synd = selected.synd, gestalt_combo = T),
                                encode = "json")
       

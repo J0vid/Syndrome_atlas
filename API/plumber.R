@@ -2,6 +2,7 @@ library(plumber)
 library(future)
 library(Jovid)
 library(dplyr)
+library(promises)
 future::plan("multisession")
 
 setwd("~/shiny/shinyapps/Syndrome_model/")
@@ -74,20 +75,18 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
   selected.age <- as.numeric(selected.age)
   
   datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
- future({
+ future_promise({
   predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
  })
-  # json rounds small numbers, let's multiply the scale to recover that info
-
+  
 }
 
 #* generate atlas prediction
 #* @param selected.sex predicted sex effect
 #* @param selected.age predicted age effect
 #* @param selected.synd predicted syndrome effect
-#* @serializer htmlwidget
 #* @get /predshape_mesh
-function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondroplasia") {
+function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondroplasia", res) {
   selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
   if(selected.sex == "Female"){selected.sex <-1
   } else if(selected.sex == "Male"){selected.sex <- 0} 
@@ -97,14 +96,14 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
   print(selected.synd)
   print(selected.sex)
   
-  future({
+  future_promise({
   predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
   
   tmp.mesh <- atlas
   tmp.mesh$vb[-4,] <- t(predicted.shape)
   
-  plot3d(Rvcg::vcgSmooth(tmp.mesh), aspect = "iso", box = F, axes = F, specular = 1, col = "lightgrey")
-  rglwidget()
+  Rvcg::vcgSmooth(tmp.mesh)
+
   })
   
 }
@@ -184,7 +183,7 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
   datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
   
   
-  future({
+  future_promise({
   predicted.texture <- predtexture.lm(texture.coefs[,1:300], datamod, texture.pcs, texture.mean, gestalt_combo = gestalt_combo)
   })
   
