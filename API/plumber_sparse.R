@@ -2,20 +2,31 @@ library(plumber)
 library(future)
 library(Jovid)
 library(dplyr)
+library(Rvcg)
 library(promises)
 future::plan("multisession")
 
 setwd("~/shiny/shinyapps/Syndrome_model/")
 # setwd("/srv/shiny-server/testing_ground/")
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
-load("data.Rdata")
-load("modules_PCA.Rdata")
-eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
-load("~/shiny/shinyapps/Syndrome_model/FB2_texture_PCA.Rdata")
-texture.coefs <- lm(texture.pca$x[,1:300] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
-texture.pcs <-  texture.pca$rotation[,1:300]
-texture.mean <- texture.pca$center
+load("2k_topo_objects.Rdata")
+# load("modules_PCA.Rdata")
+# eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
+# load("~/shiny/shinyapps/Syndrome_model/FB2_texture_PCA.Rdata")
+# texture.coefs <- lm(texture.pca$x[,1:300] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
+# texture.pcs <-  texture.pca$rotation[,1:300]
+# texture.mean <- texture.pca$center
 
+atlas <- new_atlas
+tmp.mesh <- atlas
+synd.mshape <- d.registered$mshape
+PC.eigenvectors <- d.registered$PCs[,1:200]
+d.meta.combined$Sex <- as.numeric(d.meta.combined$Sex == "F")
+d.meta.combined$Syndrome <- factor(d.meta.combined$Syndrome, levels = unique(d.meta.combined$Syndrome))
+
+num_pcs <- 200
+meta.lm <- lm(d.registered$PCscores[,1:num_pcs] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)
+synd.lm.coefs <- meta.lm$coefficients
 
 predshape.lm <- function(fit, datamod, PC, mshape){
   dims <- dim(mshape)
@@ -35,33 +46,33 @@ predPC.lm <- function(fit, datamod){
   return(pred * 1e10)
 }
 
-predtexture.lm <- function(fit, datamod, PC, mshape, gestalt_combo = NULL){
-  dims <- dim(mshape)
-  mat <- model.matrix(datamod)
-  pred <- mat %*% fit
-  names <- as.matrix(model.frame(datamod))
-  names <- apply(names, 1, paste, collapse = "_")
-  names <- gsub(" ", "", names)
-  predPC <- t(PC %*% t(pred))
-  out <- mshape + predPC
-  
-  predicted.texture3d <- row2array3d(out)[,,1]
-  
-  if(is.null(gestalt_combo) == F){
-    final.texture <-  2*(predicted.texture3d) + t(col2rgb(atlas$material$color))
-  } else {final.texture <- predicted.texture3d}
-  
-  
-  #scale values
-  maxs <- apply(final.texture, 2, max)
-  mins <- apply(final.texture, 2, min)
-  additive.texture <- scale(final.texture, center = mins, scale = maxs - mins)
-  hex.mean <- rgb(additive.texture, maxColorValue = 1)
-  
-  # dimnames(out)[[3]] <- names
-  # rownames(pred) <- names
-  return(hex.mean)
-}
+# predtexture.lm <- function(fit, datamod, PC, mshape, gestalt_combo = NULL){
+#   dims <- dim(mshape)
+#   mat <- model.matrix(datamod)
+#   pred <- mat %*% fit
+#   names <- as.matrix(model.frame(datamod))
+#   names <- apply(names, 1, paste, collapse = "_")
+#   names <- gsub(" ", "", names)
+#   predPC <- t(PC %*% t(pred))
+#   out <- mshape + predPC
+#   
+#   predicted.texture3d <- row2array3d(out)[,,1]
+#   
+#   if(is.null(gestalt_combo) == F){
+#     final.texture <-  2*(predicted.texture3d) + t(col2rgb(atlas$material$color))
+#   } else {final.texture <- predicted.texture3d}
+#   
+#   
+#   #scale values
+#   maxs <- apply(final.texture, 2, max)
+#   mins <- apply(final.texture, 2, min)
+#   additive.texture <- scale(final.texture, center = mins, scale = maxs - mins)
+#   hex.mean <- rgb(additive.texture, maxColorValue = 1)
+#   
+#   # dimnames(out)[[3]] <- names
+#   # rownames(pred) <- names
+#   return(hex.mean)
+# }
 
 
 #* @apiTitle Syndrome model API
@@ -71,15 +82,39 @@ predtexture.lm <- function(fit, datamod, PC, mshape, gestalt_combo = NULL){
 #* @param selected.age predicted age effect
 #* @param selected.synd predicted syndrome effect
 #* @get /predshape
-function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondroplasia") {
+function(selected.sex = "Female", selected.synd = "Achondroplasia", selected.severity = "typical", min_age = 1, max_age = 20, severity_sd = .02) {
   selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
-  if(selected.sex == "Female"){selected.sex <-1
-  } else if(selected.sex == "Male"){selected.sex <- 0} 
-  selected.age <- as.numeric(selected.age)
+  if(selected.sex == "Female"){selected.sex <- 2
+  } else if(selected.sex == "Male"){selected.sex <- -1}
   
-  datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+  #severity math####
+  S <- matrix(synd.lm.coefs[grepl(pattern = selected.synd, rownames(synd.lm.coefs)),], nrow = 1, ncol = num_pcs)
+  Snorm <- S/sqrt(sum(S^2))
+  
+  minage <- min_age
+  nframes <- max_age
+  
+  if(selected.severity == "mild"){selected.severity <- -2 * severity_sd} else if(selected.severity == "severe"){selected.severity <- 2 * severity_sd} else if(selected.severity == "typical"){selected.severity <- 0}
+  
  future_promise({
-  predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+   values <- matrix(NA, ncol = 11628 * 3, nrow = length(minage:nframes))
+   
+   for(i in 1:nrow(values)){
+     selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
+     selected.age <- i
+     
+     main.res <- 1e10 * matrix(t(PC.eigenvectors %*% t(selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
+     
+     datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+     predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+     
+     tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
+     final.shape <- t(vcgSmooth(tmp.mesh)$vb[-4,])
+     
+     shape.tmp <- array(final.shape[as.numeric(atlas$it), ], dim = c(11628, 3, 1))
+     values[i,] <- geomorph::two.d.array(shape.tmp)
+   }
+   values
  })
   
 }
@@ -95,7 +130,7 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
   } else if(selected.sex == "Male"){selected.sex <- 0} 
   selected.age <- as.numeric(selected.age)
   
-  predicted.shape <- matrix(NA, nrow = 50, ncol = 500)
+  predicted.shape <- matrix(NA, nrow = 50, ncol = 200)
   future_promise({
     for(i in 1:50){
       selected.age <- i
@@ -112,6 +147,7 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
 #* @param selected.sex predicted sex effect
 #* @param selected.age predicted age effect
 #* @param selected.synd predicted syndrome effect
+#* @serializer htmlwidget
 #* @get /predshape_mesh
 function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondroplasia", res) {
   selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
@@ -129,7 +165,8 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
   tmp.mesh <- atlas
   tmp.mesh$vb[-4,] <- t(predicted.shape)
   
-  Rvcg::vcgSmooth(tmp.mesh)
+  plot3d(Rvcg::vcgSmooth(tmp.mesh), aspect = "iso", col = "lightgrey", specular = 1)
+  rglwidget()
 
   })
   

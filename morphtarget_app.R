@@ -6,11 +6,10 @@ library(Morpho)
 ui <- (fluidPage(
   selectInput("synd", label = "Syndrome", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Achondroplasia"),
   selectInput("sex", label = "Sex", choices = c("Female", "Male")),
-  sliderInput("age", label = "Age", min = 1, max = 70, value = 12, step = 1),
-  sliderInput("severity", label = "Severity", min = 0, max = 4, value = 2, step = 1),
-  # sliderInput("secret_slider", label = "", min = 0, max = 10, value = 0, step = 1),
+  sliderInput("age", label = "Age", min = 1, max = 70, value = 12, step = 1, animate = animationOptions(loop = T, interval = 40)),
+  selectInput("severity", label = "Severity", choices = c("mild", "typical", "severe"), selected = "typical"),
+  actionButton("update", label = "Update"),
   playwidgetOutput("control"),
-  playwidgetOutput("control2"),
   rglwidgetOutput("wdg")
 ))
 
@@ -41,36 +40,42 @@ server <- function(input, output, session) {
   observe({
     slider_min <-  round(abs(min(doutVar()[[1]])))
     slider_max <- round(max(doutVar()[[1]]))
-    updateSliderInput(session, "age", label = "Age", min = slider_min, max = slider_max)
-    
-    syndscores.main <- doutVar()[[2]] * 100
-    #updateSliderInput(session, "severity", label = "Syndrome severity", min = round(-1*sd(syndscores.main)), max = round(1*sd(syndscores.main)), step = round(diff(range(syndscores.main))/10), value = 0)
-    updateSliderInput(session, "severity", label = "Syndrome severity", min = 0, max = 4, step = 1, value = 2)
-    # updateSliderInput(session, "secret_slider", min = 0, max = (slider_max - slider_min) * 5, step = 1, value = input$severity + (input$age*5))
+    updateSliderInput(session, "age", label = "Age", min = slider_min, max = slider_max, value = mean(doutVar()[[1]]))
+
   })
   
   selected.synd <- factor("Achondroplasia", levels = levels(d.meta.combined$Syndrome))
   selected.sex <-1
-  selected.age <- 1 #round(abs(min(doutVar()[[1]])))
+  selected.age <- 19 
   
   datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
   predicted.shape <- predshape.lm(synd.lm.coefs, datamod, d.registered$PCs[,1:num_pcs], d.registered$mshape)
 
   atlas$vb[-4,] <- t(predicted.shape)
+  tmp.mesh <- atlas
   
   open3d()
   shade3d(vcgSmooth(atlas), aspect = "iso", col = "lightgrey", specular = 1)
   objid <- ids3d()$id
   xyz <- rgl.attrib(objid[1], "vertices")
   dim(xyz)
-  print(currentSubscene3d())
   
-  morph_target <- reactive({
+  
+  morph_target <- eventReactive(input$update, {
   #age morph target####
   minage <- round(abs(min(doutVar()[[1]])))
   nframes <- round(max(doutVar()[[1]]))
   if(input$sex == "Female"){selected.sex <- 2
   } else if(input$sex == "Male"){selected.sex <- -1}
+  
+  #severity math####
+  S <- matrix(synd.lm.coefs[grepl(pattern = input$synd, rownames(synd.lm.coefs)),], nrow = 1, ncol = num_pcs)
+  Snorm <- S/sqrt(sum(S^2))
+  
+  syndscores.main <- doutVar()[[2]]
+  
+  
+  if(input$severity == "mild"){selected.severity <- -2 * sd(syndscores.main)} else if(input$severity == "severe"){selected.severity <- 2 * sd(syndscores.main)} else if(input$severity == "typical"){selected.severity <- 0}
 
   values <- matrix(NA, ncol = nrow(xyz) * 3, nrow = length(minage:nframes))
 
@@ -78,10 +83,15 @@ server <- function(input, output, session) {
     selected.synd <- factor(input$synd, levels = levels(d.meta.combined$Syndrome))
     selected.age <- i
 
+    main.res <- matrix(t(d.registered$PCs[,1:num_pcs] %*% t(selected.severity * Snorm)), dim(d.registered$mshape)[1], dim(d.registered$mshape)[2])
+    
     datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
     predicted.shape <- predshape.lm(synd.lm.coefs, datamod, d.registered$PCs[,1:num_pcs], d.registered$mshape)
-
-    shape.tmp <- array(predicted.shape[as.numeric(atlas$it), ], dim = c(nrow(xyz), 3, 1))
+    
+    tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
+    final.shape <- t(vcgSmooth(tmp.mesh)$vb[-4,])
+    
+    shape.tmp <- array(final.shape[as.numeric(atlas$it), ], dim = c(nrow(xyz), 3, 1))
     values[i,] <- geomorph::two.d.array(shape.tmp)
 
   }
@@ -91,43 +101,7 @@ server <- function(input, output, session) {
                            attributes = rep(c("x", "y", "z"), nrow(xyz)),
                            objid = objid)
 
-  #severity morph target####
-  S <- matrix(synd.lm.coefs[grepl(pattern = input$synd, rownames(synd.lm.coefs)),], nrow = 1, ncol = num_pcs)
-  Snorm <- S/sqrt(sum(S^2))
-
-  syndscores.main <- doutVar()[[2]]
-  severity_range <- seq(round(-1*sd(syndscores.main), 2), round(1*sd(syndscores.main), 2), length.out = 10)
-
-  selected.synd <- factor(input$synd, levels = levels(d.meta.combined$Syndrome))
-  selected.age <- 0#input$age
-  # syndonly_lm <- lm(d.registered$PCscores[,1:num_pcs] ~ d.meta.combined$Syndrome)$coef
-
-  datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
-  predicted.shape <- predshape.lm(synd.lm.coefs, datamod, d.registered$PCs[,1:num_pcs], d.registered$mshape)
-
-  values2 <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 10)
-
-  for(i in 1:nrow(values2)){
-
-    selected.severity <- severity_range[i] #.01
-
-    main.res <- matrix(t(d.registered$PCs[,1:num_pcs] %*% t(selected.severity * Snorm)), dim(d.registered$mshape)[1], dim(d.registered$mshape)[2])
-
-    #add severity residuals
-    severity_shape <-  predicted.shape + main.res
-
-    shape.tmp <- array(severity_shape[as.numeric(atlas$it), ], dim = c(nrow(xyz), 3, 1))
-    values2[i,] <- geomorph::two.d.array(shape.tmp)
-
-  }
-
-  # control2 <- vertexControl(values = values2,
-  #                          vertices = rep(1:nrow(xyz), each = 3),
-  #                          attributes = rep(c("x", "y", "z"), nrow(xyz)),
-  #                          objid = objid
-  #                          )
-
-
+ 
   scene <- scene3d()
   # rgl.close()
   # return(list(scene, control, control2))
@@ -137,7 +111,7 @@ server <- function(input, output, session) {
 
 
   output$wdg <- renderRglwidget({
-    rglwidget(elementId="plot3drgl2", morph_target()[[1]], controllers = c("control"))
+    rglwidget(morph_target()[[1]], controllers = c("control"))
   })
 
 
