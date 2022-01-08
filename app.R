@@ -249,7 +249,7 @@ ui <- fluidPage(
         #          visNetworkOutput("network", height="80vh")),
         # tabPanel("Morphospace", br(), plotOutput("morphospace")),
         tabPanel("Submitted face", br(),
-                 withSpinner(rglwidgetOutput("submitted_face", width = "65vw", height="80vh"), type = 6, color = "#fca311"),
+                 # withSpinner(rglwidgetOutput("submitted_face", width = "65vw", height="80vh"), type = 6, color = "#fca311"),
                  br(),
                  plotlyOutput("posterior_scree")),
         tabPanel("About", br(), HTML("<p style=\"color:black;\">This app aims to help clinical geneticists better understand the characteristic craniofacial features of various genetic syndromes. There are 3 sections to this app and here is my description of how they work. Here are the people that made this app possible.</p>"))#, 
@@ -263,6 +263,28 @@ ui <- fluidPage(
 
 
 server <- function(input, output, session) {
+  
+  options(rgl.useNULL = TRUE)
+  save <- options(rgl.inShiny = TRUE)
+  on.exit(options(save))
+  xyz <- 166131
+  
+  close3d()
+  
+  selected.synd <- factor("Costello Syndrome", levels = levels(d.meta.combined$Syndrome))
+  selected.sex <-1
+  selected.age <- 19 
+  
+  datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+  predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+  
+  atlas$vb[-4,] <- t(predicted.shape)
+  tmp.mesh <- atlas
+  
+  open3d()
+  shade3d(vcgSmooth(atlas), aspect = "iso", col = "lightgrey", specular = 1)
+  objid <- ids3d()$id
+  xyz <- rgl.attrib(objid[1], "vertices")
   
   #synd reactive####
   outVar <- reactive({
@@ -287,23 +309,6 @@ server <- function(input, output, session) {
     updateSliderInput(session, "age", label = "Age", min = 0, max = 1, value = 0)
   })
   
-  selected.synd <- factor("Achondroplasia", levels = levels(d.meta.combined$Syndrome))
-  selected.sex <-1
-  selected.age <- 19 
-  
-  datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
-  predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
-  
-  atlas$vb[-4,] <- t(predicted.shape)
-  tmp.mesh <- atlas
-  
-  open3d()
-  shade3d(vcgSmooth(atlas), aspect = "iso", col = "lightgrey", specular = 1)
-  objid <- ids3d()$id
-  xyz <- rgl.attrib(objid[1], "vertices")
-  dim(xyz)
-  
-
   morph_target <- eventReactive(input$Update, {
     #age morph target####
     min_age <- round(abs(min(doutVar()[[1]])))
@@ -315,14 +320,14 @@ server <- function(input, output, session) {
     selected.severity <- input$severity
     
     raw_api_res <- httr::GET(url = paste0("http://localhost:6352", "/gestalt_morphtarget"),
-                             query = list(selected.sex = selected.sex, selected.synd = selected.synd, selected.severity = selected.severity, min_age = min_age, max_age = max_age),
+                             query = list(selected.sex = selected.sex, selected.synd = selected.synd, selected.severity = selected.severity, min_age = min_age, max_age = max_age, selected.color = input$texture),
                              encode = "json")
     
     values  <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))
     
     control <- vertexControl(values = values,
-                             vertices = rep(1:nrow(xyz), each = 3),
-                             attributes = rep(c("x", "y", "z"), nrow(xyz)),
+                             vertices = rep(1:nrow(xyz), each = 6),
+                             attributes = c(rep(c("x", "red", "y", "green", "z", "blue"), nrow(xyz))),
                              objid = objid)
     
     scene <- scene3d()

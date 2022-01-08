@@ -235,7 +235,7 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
 #* @param max_age morphtarget max
 #* @param severity_sd standard deviation of the severity scores
 #* @get /gestalt_morphtarget
-function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", selected.severity = "typical", min_age = 1, max_age = 20, severity_sd = .02) {
+function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", selected.severity = "typical", min_age = 1, max_age = 20, severity_sd = .02, selected.color = "Generic") {
   selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
   if(selected.sex == "Female"){selected.sex <- 1.5
   } else if(selected.sex == "Male"){selected.sex <- -.5}
@@ -250,6 +250,7 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", select
   if(selected.severity == "mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "typical"){selected.severity <- 0}
 future_promise({
   values.shape <- matrix(NA, ncol = 166131 * 3, nrow = 2)
+  values_col <- matrix(NA, ncol = 166131 * 3, nrow = 2)
   for(i in 1:nrow(values.shape)){
     selected.age <- as.numeric(c(min_age, max_age)[i])
     
@@ -263,8 +264,13 @@ future_promise({
     
     shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(166131, 3, 1))
     values.shape[i,] <- geomorph::two.d.array(shape.tmp)
+    
+    if(selected.color == "Generic") col.tmp <- array(t(col2rgb(atlas$material$color[atlas$it])), dim = c(166131, 3, 1))/255
+    if(selected.color == "Lightgrey") col.tmp <- array(211/255, dim = c(166131, 3, 1))
+    values_col[i,] <- geomorph::two.d.array(col.tmp)
   }
-  return(values.shape)
+  combined_values <- rbind(as.numeric(t(cbind(values.shape[1,], values_col[1,]))), as.numeric(t(cbind(values.shape[2,], values_col[2,]))))
+  return(combined_values)
 })
   
 }
