@@ -389,11 +389,6 @@ server <- function(input, output, session) {
     
   })
   
-  
-  # output$shiny_return <- renderText({
-  #   paste("Current node selection : ", input$network_selected)
-  # })
-  
   #syndrome comparison reactive####
   # syndrome_comps <- eventReactive(input$update_comp, {
   #   comp_age <- input$comp_age
@@ -450,7 +445,6 @@ server <- function(input, output, session) {
     updateSliderInput(session, "comp_age", label = "Age", min = 0, max = 1, value = 0)
   })
   
-  
   morph_target_comparison <- eventReactive(input$update_comp, {
     #age morph target####
     min_age <- round(abs(min(outVar2()[[1]])))
@@ -462,8 +456,16 @@ server <- function(input, output, session) {
     selected.sex <- input$comp_sex
     selected.severity <- input$comp_severity
     
+    if(is.null(input$network_selected)){
+      selected.node <- 1 } else if(input$network_selected == ""){
+           selected.node <- 1} else{
+           selected.node <- as.numeric(input$network_selected)
+           }
+    
+    print(selected.node)
+    
     raw_api_res <- httr::GET(url = paste0("http://localhost:6352", "/comparison_morphtarget"),
-                             query = list(selected.sex = selected.sex, selected.synd = selected.synd, synd_comp = synd_comp, selected.severity = selected.severity, min_age = min_age, max_age = max_age),
+                             query = list(selected.sex = selected.sex, selected.synd = selected.synd, synd_comp = synd_comp, selected.severity = selected.severity, min_age = min_age, max_age = max_age, facial_subregion = selected.node),
                              encode = "json")
     
     values  <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))

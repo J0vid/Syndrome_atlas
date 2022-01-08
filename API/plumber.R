@@ -10,6 +10,7 @@ setwd("~/shiny/shinyapps/Syndrome_model/")
 # setwd("/srv/shiny-server/testing_ground/")
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
 load("data.Rdata")
+load("modules_400PCs.Rdata")
 # load("modules_PCA.Rdata")
 # eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
 # load("~/shiny/shinyapps/Syndrome_model/FB2_texture_PCA.Rdata")
@@ -282,12 +283,13 @@ future_promise({
 #* @param synd_comp compared syndrome
 #* @param facial_subset what part of the face to analyze
 #* @get /comparison_morphtarget
-function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_comp = "Achondroplasia", selected.severity = "typical", min_age = 1, max_age = 20, severity_sd = .02) {
+function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_comp = "Achondroplasia", selected.severity = "typical", min_age = 1, max_age = 20, severity_sd = .02, facial_subregion = 1) {
   selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
   synd_comp <- factor(synd_comp, levels = levels(d.meta.combined$Syndrome))
   if(selected.sex == "Female"){selected.sex <- 1.5
   } else if(selected.sex == "Male"){selected.sex <- -.5}
   
+  facial_subregion <- as.numeric(facial_subregion)
   #severity math####
   S <- matrix(synd.lm.coefs[grepl(pattern = selected.synd, rownames(synd.lm.coefs)),], nrow = 1, ncol = ncol(PC.eigenvectors))
   Snorm <- S/sqrt(sum(S^2))
@@ -321,7 +323,16 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_c
     tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
     final.shape2 <- vcgSmooth(tmp.mesh)
     
+    #if a facial subregion is selected, let's only color the region and leave everything else grey
+    if(facial_subregion == 1){
     col.tmp <- array(t(col2rgb(meshDist(final.shape, final.shape2, plot = F)$cols[atlas$it])), dim = c(166131, 3, 1))/255
+    } else{
+      node.code <- c("posterior_mandible" = 2, "nose" = 3,"anterior_mandible" = 4, "brow" = 5, "zygomatic" = 6, "premaxilla" = 7)
+      tmp.meshdist <- meshDist(final.shape, final.shape2, plot = F)$cols
+      tmp.meshdist[modules[,names(node.code)[node.code == facial_subregion]] == F] <- "#d3d3d3"
+      
+      col.tmp <- array(t(col2rgb(tmp.meshdist[atlas$it])), dim = c(166131, 3, 1))/255
+    }
     values_col[i,] <- geomorph::two.d.array(col.tmp)
   }
   
@@ -333,4 +344,10 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_c
 }
 
 
-
+#* get similarity scores for whole face and selected subregion
+#* @param comp_age age for syndrome comparison
+#* @param comp_sex sex for syndrome comparison
+#* @param reference reference syndrome
+#* @param synd_comp compared syndrome
+#* @param facial_subset what part of the face to analyze
+#* @get /similarity_scores
