@@ -350,7 +350,7 @@ server <- function(input, output) {
       visInteraction(hover = F,
                      dragNodes = T,
                      dragView = T) %>%
-      visOptions(nodesIdSelection = list(enabled = F, 
+      visOptions(nodesIdSelection = list(enabled = T, 
                                          selected = "1"),
                  highlightNearest = F
       ) %>% 
@@ -372,9 +372,9 @@ server <- function(input, output) {
   })
   
   
-  output$shiny_return <- renderText({
-    paste("Current node selection : ", input$network_selected)
-  })
+  # output$shiny_return <- renderText({
+  #   paste("Current node selection : ", input$network_selected)
+  # })
   
   #syndrome comparison reactive####
   syndrome_comps <- eventReactive(input$update_comp, {
@@ -383,8 +383,14 @@ server <- function(input, output) {
     reference <- input$reference
     synd_comp <- input$synd_comp
     
+    if(is.null(input$network_selected)) selected.node <- 1 else if(input$network_selected == ""){
+      selected.node <- 1} else{
+        selected.node <- as.numeric(input$network_selected)}
+    
+    print(paste0("current node reactive: ", input$network_selected))
+    
     raw_api_res <- httr::GET(url = paste0("http://localhost:6352", "/synd_comp"),
-                             query = list(comp_age = comp_age, comp_sex = comp_sex, reference = reference, synd_comp = synd_comp, facial_subset = ""),
+                             query = list(comp_age = comp_age, comp_sex = comp_sex, reference = reference, synd_comp = synd_comp, facial_subset = selected.node),
                              encode = "json")
     
     json2list <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))
@@ -525,12 +531,13 @@ server <- function(input, output) {
       selected.node <- 1} else{
         selected.node <- as.numeric(input$network_selected)} 
     
+    print(paste0("current node: ", selected.node))
     
     if(input$displace & input$synd_comp != input$reference & selected.node == 1){
       mD.synd <- meshDist(syndrome_comps()[[1]], syndrome_comps()[[2]], plot = F, scaleramp = F, displace = input$displace, alpha = input$transparency)
       a <- render(mD.synd, displace = T, alpha = input$transparency)
     } else if(input$displace == F & input$synd_comp != input$reference & selected.node == 1){
-      print(syndrome_comps())
+      # print(syndrome_comps())
       mD.synd <- meshDist(syndrome_comps()[[1]], syndrome_comps()[[2]], plot = F, scaleramp = F)
       a <- render(mD.synd, alpha = input$transparency)
       
@@ -613,7 +620,7 @@ server <- function(input, output) {
             panel.background = element_blank(),
             plot.margin = margin(20, 20, 20, 20)
       )
-    print(selected.node)
+    # print(selected.node)
     g <- ggplotGrob(p)
     bg <- g$grobs[[1]]
     round_bg <- roundrectGrob(x=bg$x, y=bg$y, width=bg$width, height=bg$height,

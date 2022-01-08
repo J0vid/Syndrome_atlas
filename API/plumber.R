@@ -63,7 +63,6 @@ predtexture.lm <- function(fit, datamod, PC, mshape, gestalt_combo = NULL){
   return(hex.mean)
 }
 
-
 #* @apiTitle Syndrome model API
 
 #* generate atlas prediction
@@ -217,8 +216,103 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
 }
 
 
+#* generate atlas morphtarget
+#* @param selected.sex predicted sex effect
+#* @param selected.age predicted age effect
+#* @param selected.synd predicted syndrome effect
+#* @get /gestalt_morphtarget
+function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", selected.severity = "typical", min_age = 1, max_age = 20, severity_sd = .02) {
+  selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
+  synd_comp <- factor(synd_comp, levels = levels(d.meta.combined$Syndrome))
+  if(selected.sex == "Female"){selected.sex <- 1.5
+  } else if(selected.sex == "Male"){selected.sex <- -.5}
+  
+  #severity math####
+  S <- matrix(synd.lm.coefs[grepl(pattern = selected.synd, rownames(synd.lm.coefs)),], nrow = 1, ncol = ncol(PC.eigenvectors))
+  Snorm <- S/sqrt(sum(S^2))
+  
+  minage <- min_age
+  nframes <- max_age
+  
+  if(selected.severity == "mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "typical"){selected.severity <- 0}
+  
+  future_promise({
+  values <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 2)
+  for(i in 1:nrow(values)){
+    selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
+    selected.age <- c(min_age, max_age)[i]
+    
+    main.res <- 1e10 * matrix(t(PC.eigenvectors %*% t(selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
+    
+    datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
+    final.shape <- vcgSmooth(tmp.mesh)
+    
+    shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(nrow(xyz), 3, 1))
+    values[i,] <- geomorph::two.d.array(shape.tmp)
+    
+  }
+  })
+  return(values)
+}
 
-
+#* comparison plot
+#* @param comp_age age for syndrome comparison
+#* @param comp_sex sex for syndrome comparison
+#* @param reference reference syndrome
+#* @param synd_comp compared syndrome
+#* @param facial_subset what part of the face to analyze
+#* @get /comparison_morphtarget
+function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_comp = "Achondroplasia", selected.severity = "typical", min_age = 1, max_age = 20, severity_sd = .02) {
+  selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
+  synd_comp <- factor(synd_comp, levels = levels(d.meta.combined$Syndrome))
+  if(selected.sex == "Female"){selected.sex <- 1.5
+  } else if(selected.sex == "Male"){selected.sex <- -.5}
+  
+  #severity math####
+  S <- matrix(synd.lm.coefs[grepl(pattern = selected.synd, rownames(synd.lm.coefs)),], nrow = 1, ncol = ncol(PC.eigenvectors))
+  Snorm <- S/sqrt(sum(S^2))
+  
+  minage <- min_age
+  nframes <- max_age
+  
+  if(selected.severity == "mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "typical"){selected.severity <- 0}
+  
+  future_promise({
+  values <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 2)
+  values_col <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 2)
+  
+  for(i in 1:nrow(values)){
+    selected.age <- c(min_age, max_age)[i]
+    
+    main.res <- 1e10 * matrix(t(PC.eigenvectors %*% t(selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
+    
+    datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
+    final.shape <- vcgSmooth(tmp.mesh)
+    
+    shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(nrow(xyz), 3, 1))
+    values[i,] <- geomorph::two.d.array(shape.tmp)
+    
+    datamod_comp <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + synd_comp + selected.age:synd_comp
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod_comp, PC.eigenvectors, synd.mshape)
+    
+    tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
+    final.shape2 <- vcgSmooth(tmp.mesh)
+    
+    col.tmp <- array(t(col2rgb(meshDist(final.shape, final.shape2, plot = F)$cols[atlas$it])), dim = c(nrow(xyz), 3, 1))/255
+    values_col[i,] <- geomorph::two.d.array(col.tmp)
+  }
+  
+  combined_values <- rbind(as.numeric(t(cbind(values[1,], values_col[1,]))), as.numeric(t(cbind(values[2,], values_col[2,]))))
+  })
+  return(combined_values)
+  
+}
 
 
 
