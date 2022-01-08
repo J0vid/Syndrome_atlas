@@ -3,18 +3,29 @@ library(future)
 library(Jovid)
 library(dplyr)
 library(promises)
+library(Morpho)
 future::plan("multisession")
 
 setwd("~/shiny/shinyapps/Syndrome_model/")
 # setwd("/srv/shiny-server/testing_ground/")
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
 load("data.Rdata")
-load("modules_PCA.Rdata")
-eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
-load("~/shiny/shinyapps/Syndrome_model/FB2_texture_PCA.Rdata")
-texture.coefs <- lm(texture.pca$x[,1:300] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
-texture.pcs <-  texture.pca$rotation[,1:300]
-texture.mean <- texture.pca$center
+# load("modules_PCA.Rdata")
+# eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
+# load("~/shiny/shinyapps/Syndrome_model/FB2_texture_PCA.Rdata")
+# texture.coefs <- lm(texture.pca$x[,1:300] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
+# texture.pcs <-  texture.pca$rotation[,1:300]
+# texture.mean <- texture.pca$center
+
+tmp.mesh <- atlas
+# synd.mshape <- d.registered$mshape
+# PC.eigenvectors <- d.registered$PCs[,1:200]
+d.meta.combined$Sex <- as.numeric(d.meta.combined$Sex == "F")
+d.meta.combined$Syndrome <- factor(d.meta.combined$Syndrome, levels = unique(d.meta.combined$Syndrome))
+
+num_pcs <- 500
+meta.lm <- lm(PC.scores[,1:num_pcs] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)
+synd.lm.coefs <- meta.lm$coefficients
 
 
 predshape.lm <- function(fit, datamod, PC, mshape){
@@ -218,12 +229,14 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
 
 #* generate atlas morphtarget
 #* @param selected.sex predicted sex effect
-#* @param selected.age predicted age effect
 #* @param selected.synd predicted syndrome effect
+#* @param selected.severity one of mild, typical, or severe
+#* @param min_age morphtarget min
+#* @param max_age morphtarget max
+#* @param severity_sd standard deviation of the severity scores
 #* @get /gestalt_morphtarget
 function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", selected.severity = "typical", min_age = 1, max_age = 20, severity_sd = .02) {
   selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
-  synd_comp <- factor(synd_comp, levels = levels(d.meta.combined$Syndrome))
   if(selected.sex == "Female"){selected.sex <- 1.5
   } else if(selected.sex == "Male"){selected.sex <- -.5}
   
@@ -235,12 +248,10 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", select
   nframes <- max_age
   
   if(selected.severity == "mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "typical"){selected.severity <- 0}
-  
-  future_promise({
-  values <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 2)
-  for(i in 1:nrow(values)){
-    selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
-    selected.age <- c(min_age, max_age)[i]
+future_promise({
+  values.shape <- matrix(NA, ncol = 166131 * 3, nrow = 2)
+  for(i in 1:nrow(values.shape)){
+    selected.age <- as.numeric(c(min_age, max_age)[i])
     
     main.res <- 1e10 * matrix(t(PC.eigenvectors %*% t(selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
     
@@ -250,12 +261,12 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", select
     tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
     final.shape <- vcgSmooth(tmp.mesh)
     
-    shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(nrow(xyz), 3, 1))
-    values[i,] <- geomorph::two.d.array(shape.tmp)
-    
+    shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(166131, 3, 1))
+    values.shape[i,] <- geomorph::two.d.array(shape.tmp)
   }
-  })
-  return(values)
+  return(values.shape)
+})
+  
 }
 
 #* comparison plot
@@ -281,11 +292,11 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_c
   if(selected.severity == "mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "typical"){selected.severity <- 0}
   
   future_promise({
-  values <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 2)
-  values_col <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 2)
+  values <- matrix(NA, ncol = 166131 * 3, nrow = 2)
+  values_col <- matrix(NA, ncol = 166131 * 3, nrow = 2)
   
   for(i in 1:nrow(values)){
-    selected.age <- c(min_age, max_age)[i]
+    selected.age <- as.numeric(c(min_age, max_age)[i])
     
     main.res <- 1e10 * matrix(t(PC.eigenvectors %*% t(selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
     
@@ -295,7 +306,7 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_c
     tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
     final.shape <- vcgSmooth(tmp.mesh)
     
-    shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(nrow(xyz), 3, 1))
+    shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(166131, 3, 1))
     values[i,] <- geomorph::two.d.array(shape.tmp)
     
     datamod_comp <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + synd_comp + selected.age:synd_comp
@@ -304,13 +315,14 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_c
     tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
     final.shape2 <- vcgSmooth(tmp.mesh)
     
-    col.tmp <- array(t(col2rgb(meshDist(final.shape, final.shape2, plot = F)$cols[atlas$it])), dim = c(nrow(xyz), 3, 1))/255
+    col.tmp <- array(t(col2rgb(meshDist(final.shape, final.shape2, plot = F)$cols[atlas$it])), dim = c(166131, 3, 1))/255
     values_col[i,] <- geomorph::two.d.array(col.tmp)
   }
   
   combined_values <- rbind(as.numeric(t(cbind(values[1,], values_col[1,]))), as.numeric(t(cbind(values[2,], values_col[2,]))))
-  })
   return(combined_values)
+  })
+  
   
 }
 
