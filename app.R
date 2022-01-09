@@ -389,36 +389,7 @@ server <- function(input, output, session) {
     
   })
   
-  #syndrome comparison reactive####
-  # syndrome_comps <- eventReactive(input$update_comp, {
-  #   comp_age <- input$comp_age
-  #   comp_sex <- input$comp_sex
-  #   reference <- input$reference
-  #   synd_comp <- input$synd_comp
-  #   
-  #   if(is.null(input$network_selected)) selected.node <- 1 else if(input$network_selected == ""){
-  #     selected.node <- 1} else{
-  #       selected.node <- as.numeric(input$network_selected)}
-  #   
-  #   print(paste0("current node reactive: ", input$network_selected))
-  #   
-  #   raw_api_res <- httr::GET(url = paste0("http://localhost:6352", "/synd_comp"),
-  #                            query = list(comp_age = comp_age, comp_sex = comp_sex, reference = reference, synd_comp = synd_comp, facial_subset = selected.node),
-  #                            encode = "json")
-  #   
-  #   json2list <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))
-  #   
-  #   synd_mesh <- atlas
-  #   ref_mesh <- atlas
-  #   
-  #   synd_mesh$vb[-4,] <- t(json2list$syndrome_pred)
-  #   ref_mesh$vb[-4,] <- t(json2list$reference_pred)
-  #   
-  #   return(list(ref_mesh, synd_mesh, json2list$wholeface_scores, json2list$subregion_scores))
-  #   
-  #   
-  # })
-  
+ 
   #synd reactive####
   outVar2 <- reactive({
     #get selected syndrome age range
@@ -435,8 +406,6 @@ server <- function(input, output, session) {
     
     return(list(age.range, syndscores.main[d.meta.combined$Syndrome == input$reference]))
   }) 
-  
-  
   
   observe({
     slider_min <-  round(abs(min(outVar2()[[1]])))
@@ -462,8 +431,6 @@ server <- function(input, output, session) {
            selected.node <- as.numeric(input$network_selected)
            }
     
-    print(selected.node)
-    
     raw_api_res <- httr::GET(url = paste0("http://localhost:6352", "/comparison_morphtarget"),
                              query = list(selected.sex = selected.sex, selected.synd = selected.synd, synd_comp = synd_comp, selected.severity = selected.severity, min_age = min_age, max_age = max_age, facial_subregion = selected.node),
                              encode = "json")
@@ -481,42 +448,6 @@ server <- function(input, output, session) {
     return(list(scene, control_combined))
   })
   
-  # output$comparison <- renderRglwidget({
-  #   pdf(NULL)
-  #   dev.off()
-  #   
-  #   clear3d()
-  #   
-  #   if(is.null(input$network_selected)) selected.node <- 1 else if(input$network_selected == ""){
-  #     selected.node <- 1} else{
-  #       selected.node <- as.numeric(input$network_selected)} 
-  #   
-  #   print(paste0("current node: ", selected.node))
-  #   
-  #   if(input$displace & input$synd_comp != input$reference & selected.node == 1){
-  #     mD.synd <- meshDist(syndrome_comps()[[1]], syndrome_comps()[[2]], plot = F, scaleramp = F, displace = input$displace, alpha = input$transparency)
-  #     a <- render(mD.synd, displace = T, alpha = input$transparency)
-  #   } else if(input$displace == F & input$synd_comp != input$reference & selected.node == 1){
-  #     # print(syndrome_comps())
-  #     mD.synd <- meshDist(syndrome_comps()[[1]], syndrome_comps()[[2]], plot = F, scaleramp = F)
-  #     a <- render(mD.synd, alpha = input$transparency)
-  #     
-  #   }
-  #   
-  #   if(selected.node > 1){
-  #    
-  #     mD.synd <- meshDist(syndrome_comps()[[1]], syndrome_comps()[[2]], plot = F, scaleramp = F, displace = input$displace, alpha = input$transparency)
-  #     mD.synd <- rmVertex(mD.synd$colMesh, index = which(modules[,selected.node] == 1), keep = T)
-  #     # a <- render(mD.synd, displace = F, alpha = input$transparency)
-  #     plot3d(mD.synd, aspect = "iso", axes = F, box = F, xlab = "", ylab = "", zlab = "", lit = T, specular = 1)
-  #     shade3d(syndrome_comps()[[1]], col = "lightgrey", alpha = .2, specular = 1)
-  #   }
-  #   
-  #   par3d(userMatrix = front.face, zoom = .83)
-  #   aspect3d("iso")
-  #   rglwidget()
-  #   
-  # })
   output$comparison <- renderRglwidget({
     rglwidget(morph_target_comparison()[[1]], controllers = c("control_comp"))
   })
@@ -526,80 +457,101 @@ server <- function(input, output, session) {
                respondTo = "comp_age", step = .01)
   })
   
-#   output$morphospace <- renderPlot({
-# 
-#     if(is.null(input$network_selected)) selected.node <- 1 else if(input$network_selected == ""){
-#       selected.node <- 1} else{
-#         selected.node <- as.numeric(input$network_selected)}
-# 
-#     module.names <- colnames(modules)
-# #
-# #     full.morpho <- procdist.array(synd.mat, synd.mat[,,d.meta.combined$Syndrome == input$synd_comp])
-# #
-# #     sub.morpho <- procdist.array(synd.mat[modules[,selected.node] == 1,,], synd.mat[modules[,selected.node] == 1,, d.meta.combined$Syndrome == input$synd_comp])
-#     if(input$score_plot == "Raw score"){
-#         morpho.df <- data.frame(full = syndrome_comps()[[3]]$face_score, sub = syndrome_comps()[[4]]$face_score, Syndrome = levels(d.meta.combined$Syndrome))
-#         #sort to get which synds to highlight
-#         highlight_df <- morpho.df[sort(morpho.df$sub, index.return = T)$ix,]
-#         highlighted_points <- geom_point(data = highlight_df[85:89,], aes(y = full, x = sub), color = "black", fill = "#a6192e", shape = 21, size = 3) 
-#         tmp_xlab <- xlab(paste0(module.names[selected.node], " score for ", input$synd_comp))
-#         tmp_ylab <- ylab(paste0("Whole face score for ", input$synd_comp))
-#         tmp_labels <- geom_label_repel(data = highlight_df[c(1:5, 85:89),], aes(y = full, x = sub, label = Syndrome),
-#                                        force = 2,
-#                                        size = 4,
-#                                        color = c(rep("black", 5), rep("#a6192e", 5)),
-#                                        fill = "white")
-#     }
-#     
-#     if(input$score_plot == "Similarity"){
-#       full_similarity <- sqrt((syndrome_comps()[[3]]$face_score - syndrome_comps()[[3]]$face_score[levels(d.meta.combined$Syndrome) == input$synd_comp])^2)
-#       module_similarity <- sqrt((syndrome_comps()[[4]]$face_score - syndrome_comps()[[4]]$face_score[levels(d.meta.combined$Syndrome) == input$synd_comp])^2)
-#       
-#       morpho.df <- data.frame(full = full_similarity, sub = module_similarity, Syndrome = levels(d.meta.combined$Syndrome))
-#       #sort to get which synds to highlight
-#       highlight_df <- morpho.df[sort(morpho.df$sub, index.return = T)$ix,]
-#       highlighted_points <- geom_point(data = highlight_df[1:5,], aes(y = full, x = sub), color = "black", fill = "#a6192e", shape = 21, size = 3) 
-#       tmp_xlab <- xlab(paste0(module.names[selected.node], " similarity to ", input$synd_comp))
-#       tmp_ylab <- ylab(paste0("Whole face similarity to ", input$synd_comp))
-#       tmp_labels <- geom_label_repel(data = highlight_df[c(1:5, 85:89),], aes(y = full, x = sub, label = Syndrome),
-#                        force = 2,
-#                        size = 4,
-#                        color = c(rep("#a6192e", 5), rep("black", 5)),
-#                        fill = "white")
-#     }
-#     #to do
-#     #highlight 5 closest syndromes with names
-#     #maybe all points should be names, with 5 highlighted
-#     p <- ggplot(morpho.df) +
-#       geom_point(aes(y = full, x = sub), color = "black") +
-#       highlighted_points +
-#       tmp_labels +
-#       tmp_ylab +
-#       tmp_xlab +
-#       # ylim(-.25,3.5) +
-#       theme_bw() +
-#       theme(plot.background = element_rect(fill = "#fcfcfc"),
-#             axis.text = element_text(color = "black"),
-#             axis.title = element_text(color = "black"),
-#             panel.grid.major = element_line(size = 0.5, linetype = 'solid',
-#                                             colour = "grey65"),
-#             panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
-#                                             colour = "grey65"), 
-#             panel.background = element_blank(),
-#             plot.margin = margin(20, 20, 20, 20)
-#       )
-#     # print(selected.node)
-#     g <- ggplotGrob(p)
-#     bg <- g$grobs[[1]]
-#     round_bg <- roundrectGrob(x=bg$x, y=bg$y, width=bg$width, height=bg$height,
-#                               r=unit(0.1, "snpc"),
-#                               just=bg$just, name=bg$name, gp=bg$gp, vp=bg$vp)
-#     g$grobs[[1]] <- round_bg
-#     
-#     plot(g)
-#     
-# 
-#   })
+  #syndrome comparison reactive####
+  syndrome_comps <- eventReactive(input$update_comp, {
+    reference <- input$reference
+    synd_comp <- input$synd_comp
+    
+    if(is.null(input$network_selected)) selected.node <- 1 else if(input$network_selected == ""){
+      selected.node <- 1} else{
+        selected.node <- as.numeric(input$network_selected)}
+    
+    raw_api_res <- httr::GET(url = paste0("http://localhost:6352", "/similarity_scores"),
+                             query = list(reference = reference, synd_comp = synd_comp, facial_subregion = selected.node),
+                             encode = "json")
+    
+    json2list <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))
+    
+    return(list(json2list$wholeface_scores, json2list$subregion_scores))
+    
+  })
+  
+  output$morphospace <- renderPlot({
+    node.code <- c("posterior_mandible" = 2, "nose" = 3,"anterior_mandible" = 4, "brow" = 5, "zygomatic" = 6, "premaxilla" = 7)
+    
+    
+    if(is.null(input$network_selected)) selected.node <- 1 else if(input$network_selected == ""){
+      selected.node <- 1} else{
+        selected.node <- as.numeric(input$network_selected)}
+
+    module.names <- colnames(modules)
+#
+#     full.morpho <- procdist.array(synd.mat, synd.mat[,,d.meta.combined$Syndrome == input$synd_comp])
+#
+#     sub.morpho <- procdist.array(synd.mat[modules[,selected.node] == 1,,], synd.mat[modules[,selected.node] == 1,, d.meta.combined$Syndrome == input$synd_comp])
+    if(input$score_plot == "Raw score"){
+        morpho.df <- data.frame(full = syndrome_comps()[[1]]$face_score, sub = syndrome_comps()[[2]]$face_score, Syndrome = levels(d.meta.combined$Syndrome))
+        #sort to get which synds to highlight
+        highlight_df <- morpho.df[sort(morpho.df$sub, index.return = T)$ix,]
+        highlighted_points <- geom_point(data = highlight_df[85:89,], aes(y = full, x = sub), color = "black", fill = "#a6192e", shape = 21, size = 3)
+        tmp_xlab <- xlab(paste0(names(node.code)[node.code == selected.node], " score for ", input$synd_comp))
+        tmp_ylab <- ylab(paste0("Whole face score for ", input$synd_comp))
+        tmp_labels <- geom_label_repel(data = highlight_df[c(1:5, 85:89),], aes(y = full, x = sub, label = Syndrome),
+                                       force = 2,
+                                       size = 4,
+                                       color = c(rep("black", 5), rep("#a6192e", 5)),
+                                       fill = "white")
+    }
+
+    if(input$score_plot == "Similarity"){
+      full_similarity <- sqrt((syndrome_comps()[[1]]$face_score - syndrome_comps()[[1]]$face_score[levels(d.meta.combined$Syndrome) == input$synd_comp])^2)
+      module_similarity <- sqrt((syndrome_comps()[[2]]$face_score - syndrome_comps()[[2]]$face_score[levels(d.meta.combined$Syndrome) == input$synd_comp])^2)
+
+      morpho.df <- data.frame(full = full_similarity, sub = module_similarity, Syndrome = levels(d.meta.combined$Syndrome))
+      #sort to get which synds to highlight
+      highlight_df <- morpho.df[sort(morpho.df$sub, index.return = T)$ix,]
+      highlighted_points <- geom_point(data = highlight_df[1:5,], aes(y = full, x = sub), color = "black", fill = "#a6192e", shape = 21, size = 3)
+      tmp_xlab <- xlab(paste0(names(node.code)[node.code == selected.node], " similarity to ", input$synd_comp))
+      tmp_ylab <- ylab(paste0("Whole face similarity to ", input$synd_comp))
+      tmp_labels <- geom_label_repel(data = highlight_df[c(1:5, 85:89),], aes(y = full, x = sub, label = Syndrome),
+                       force = 2,
+                       size = 4,
+                       color = c(rep("#a6192e", 5), rep("black", 5)),
+                       fill = "white")
+    }
+    #to do
+    #highlight 5 closest syndromes with names
+    #maybe all points should be names, with 5 highlighted
+    p <- ggplot(morpho.df) +
+      geom_point(aes(y = full, x = sub), color = "black") +
+      highlighted_points +
+      tmp_labels +
+      tmp_ylab +
+      tmp_xlab +
+      # ylim(-.25,3.5) +
+      theme_bw() +
+      theme(plot.background = element_rect(fill = "#fcfcfc"),
+            axis.text = element_text(color = "black"),
+            axis.title = element_text(color = "black"),
+            panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                            colour = "grey65"),
+            panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
+                                            colour = "grey65"),
+            panel.background = element_blank(),
+            plot.margin = margin(20, 20, 20, 20)
+      )
+    # print(selected.node)
+    g <- ggplotGrob(p)
+    bg <- g$grobs[[1]]
+    round_bg <- roundrectGrob(x=bg$x, y=bg$y, width=bg$width, height=bg$height,
+                              r=unit(0.1, "snpc"),
+                              just=bg$just, name=bg$name, gp=bg$gp, vp=bg$vp)
+    g$grobs[[1]] <- round_bg
+
+    plot(g)
+
+
+  })
   
   
   

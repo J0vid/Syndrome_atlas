@@ -345,9 +345,48 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_c
 
 
 #* get similarity scores for whole face and selected subregion
-#* @param comp_age age for syndrome comparison
-#* @param comp_sex sex for syndrome comparison
 #* @param reference reference syndrome
 #* @param synd_comp compared syndrome
 #* @param facial_subset what part of the face to analyze
 #* @get /similarity_scores
+function(reference = "Unaffected Unrelated", synd_comp = "Costello Syndrome", facial_subregion = 1){
+  
+  selected.synd <- factor(synd_comp, levels = levels(d.meta.combined$Syndrome))
+
+  # future_promise({
+
+    #calculate syndrome severity scores for selected syndrome
+    #calculate score for the whole face
+    S <- synd.lm.coefs[grepl(pattern = synd_comp, rownames(synd.lm.coefs)),][1,]
+    Snorm <- S/sqrt(sum(S^2))
+    syndscores.main <- PC.scores %*% Snorm
+    
+    syndscores.df <- data.frame(Syndrome = d.meta.combined$Syndrome, face.score = syndscores.main)
+    syndscores.wholeface <- syndscores.df%>%
+      group_by(Syndrome) %>%
+      summarise(face_score = mean(face.score))
+    
+    # calculate score for the selected subregion
+    if(is.null(facial_subregion)) selected.node <- 1 else if(facial_subregion == 1){
+      selected.node <- 1} else{
+        selected.node <- as.numeric(facial_subregion)}
+    
+    if(selected.node > 1){
+      node.code <- c("posterior_mandible" = 2, "nose" = 3,"anterior_mandible" = 4, "brow" = 5, "zygomatic" = 6, "premaxilla" = 7)
+      subregion.coefs <- manova(get(paste0(tolower(names(node.code)[node.code == selected.node]), ".pca"))$x ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
+      S <- subregion.coefs[grepl(pattern = synd_comp, rownames(subregion.coefs)),][1,]
+      
+      Snorm <- S/sqrt(sum(S^2))
+      syndscores.main <- get(paste0(tolower(names(node.code)[node.code == selected.node]), ".pca"))$x %*% Snorm
+      
+      syndscores.df <- data.frame(Syndrome = d.meta.combined$Syndrome, module.score = syndscores.main)
+      syndscores.module <- syndscores.df%>%
+        group_by(Syndrome) %>%
+        summarise(face_score = mean(module.score))
+    } else{syndscores.module <- syndscores.wholeface}
+    
+    list(wholeface_scores = syndscores.wholeface, subregion_scores = syndscores.module)
+    
+  # }) #end future
+  
+}
