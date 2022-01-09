@@ -334,7 +334,6 @@ server <- function(input, output, session) {
                              attributes = rep(c("x", "y", "z"), nrow(xyz)),
                              objid = objid)
     
-    
     scene <- scene3d()
     # rgl.close()
     # return(list(scene, control, control2))
