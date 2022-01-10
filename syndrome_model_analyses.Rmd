@@ -22,7 +22,9 @@ setwd("~/shiny/shinyapps/Syndrome_model/")
  load("data.Rdata")
 
  #load 30K dataset
- load("~/Downloads/Segmented_PLS/30k.Rdata")
+ # load("~/Downloads/Segmented_PLS/30k.Rdata")
+ load("~/Downloads/Dense_combined_starter_PC_outliers_duplicates_removed.Rdata")
+
 
  predshape.lm <- function(fit, datamod, PC, mshape){
    dims <- dim(mshape)
@@ -456,6 +458,74 @@ rglwidget()
 ```
 
 #supplemental figure looping through all best and worst preds
+
+```{r loop comparisons for every syndrome across ages to measure model error}
+pred.mesh <- atlas
+best_worst_resids <- matrix(NA, ncol = 2, nrow = length(unique(d.meta.combined$Syndrome)))
+for(j in 1:nrow(best_worst_resids)){
+
+#lets make a residuals x age plot for the selected syndrome
+model.resid <- rep(0, length(d.meta.combined$Age[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]]))
+
+for(i in 1:length(model.resid)){
+selected.age <- d.meta.combined$Age[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]][i]
+selected.sex <- if(d.meta.combined$Sex[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]][i] == "M"){ 1} else {2} 
+selected.synd <- factor(unique(d.meta.combined$Syndrome)[j], levels = levels(d.meta.combined$Syndrome))
+matched.face <- d.lms.combined[,,d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]][,,i]
+
+
+datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    rigid.points <- sample(1:27000, 100)
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), matched.face[rigid.points,], scale = T)
+    
+actual.mesh <- pred.mesh
+
+actual.mesh$vb[-4,] <-  t(matched.face)
+    # rigid.points <- sample(1:27000, 100)
+    test2 <- rotmesh.onto(actual.mesh, t(actual.mesh$vb[1:3,rigid.points]), t(test$mesh$vb[1:3,rigid.points]), scale = T)
+
+model.resid[i] <- sum(sqrt((test2$mesh$vb[-4,] - test$mesh$vb[-4,])^2))/ncol(test$mesh$vb)
+
+}
+best_worst_resids[j,] <- c(which.min(model.resid), which.max(model.resid))
+print(j)
+}
+
+```
+
+```{r best/worst pred screenshots}
+for(j in 1:nrow(best_worst_resids)){
+i = best_worst_resids[j,2]
+selected.age <- d.meta.combined$Age[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]][i]
+selected.sex <- if(d.meta.combined$Sex[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]][i] == "M"){ 1} else {2} 
+selected.synd <- factor(unique(d.meta.combined$Syndrome)[j], levels = levels(d.meta.combined$Syndrome))
+matched.face <- d.lms.combined[,,d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]][,,i]
+
+datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+    
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    pred.mesh$vb[-4,] <-  t(predicted.shape)
+    rigid.points <- sample(1:27000, 100)
+    test <- rotmesh.onto(pred.mesh, t(pred.mesh$vb[1:3,rigid.points]), t(atlas$vb[-4,rigid.points]), scale = T)
+    
+actual.mesh <- pred.mesh
+
+actual.mesh$vb[-4,] <-  t(matched.face)
+    # rigid.points <- sample(1:27000, 100)
+    test2 <- rotmesh.onto(actual.mesh, t(actual.mesh$vb[1:3,rigid.points]), t(test$mesh$vb[1:3,rigid.points]), scale = T)
+
+    bg3d("white")
+par3d(windowRect = c(0,0, 950,1000), userMatrix = front.face, zoom = .75)       
+meshDist(test$mesh, test2$mesh, displace = F, shade = T, from = -15, to = 15)
+system(paste0("screencapture -R 20,60,900,950 ~/Desktop/mod_images/", gsub(" ", replacement = "_", unique(d.meta.combined$Syndrome)[j]), "_worst.png"))
+
+}
+```
 
 
 
