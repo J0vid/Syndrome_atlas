@@ -17,12 +17,11 @@ library(grid)
  # setwd("/srv/shiny-server/testing_ground/")
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
  load("data.Rdata")
- load("modules_PCA.Rdata")
+ load("module_indices.Rdata")
 
- eye.index <- as.numeric(read.csv("~/shiny/shinyapps/Syndrome_model/lm_indices/eye_small.csv", header = F)) +1#as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
+ # eye.index <- as.numeric(read.csv("~/shiny/shinyapps/Syndrome_model/lm_indices/eye_small.csv", header = F)) +1#as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
 
 # eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
-
 
  # load("~/shiny/shinyapps/Syndrome_model/FB2_texture_PCA.Rdata")
  
@@ -41,14 +40,10 @@ library(grid)
    dims <- dim(mshape)
    mat <- model.matrix(datamod)
    pred <- mat %*% fit
-   names <- as.matrix(model.frame(datamod))
-   names <- apply(names, 1, paste, collapse = "_")
-   names <- gsub(" ", "", names)
+   
    predPC <- t(PC %*% t(pred))
    out <- mshape + predPC
-   
-   # dimnames(out)[[3]] <- names
-   # rownames(pred) <- names
+
    return(out)
  }
  
@@ -187,14 +182,17 @@ library(grid)
  }
 
 ui <- fluidPage(
-  
+  tags$head(tags$style(HTML('.irs-from, .irs-to, .irs-min, .irs-max, .irs-single {
+            visibility: hidden !important;
+    }'))),
   titlePanel(""),
   sidebarLayout(
     sidebarPanel(
       conditionalPanel(condition = "input.Atlas_tabs=='Gestalt'",
                        selectInput("synd", label = "Syndrome", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Costello Syndrome"),
+                       sliderInput("age", label = "Age", min = 0, max = 1, value = 0, step = .01, ticks = F, animate = animationOptions(loop = T, interval = 40)),
+                       tableOutput("age_data"),
                        selectInput("sex", label = "Sex", choices = c("Female", "Male")),
-                       sliderInput("age", label = "Age", min = 0, max = 1, value = 0, step = .01, animate = animationOptions(loop = T, interval = 40)),
                        selectInput("severity", label = "Severity", choices = c("mild", "typical", "severe"), selected = "typical"),
                        playwidgetOutput("control"),
                        bsButton("texture_help", label = "", icon = icon("question"), style = "default", size = "extra-small"),
@@ -206,12 +204,13 @@ ui <- fluidPage(
                                 trigger = "hover", 
                                 options = list(container = "body")
                       ),
-                      actionButton("Update", "Update Gestalt", icon("refresh"))),
+                      actionButton("Update", "Update Gestalt", icon("sync"))),
       conditionalPanel(condition = "input.Atlas_tabs=='Comparisons'",
                       selectInput("reference", label = "Reference", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Unaffected Unrelated"),
                       selectInput("synd_comp", label = "Syndrome", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Costello Syndrome"),
+                      sliderInput("comp_age", label = "Age", min = 0, max = 1, step = .01, value = .3, ticks = F, animate = animationOptions(loop = T, interval = 40)),
+                      tableOutput("age_data_comp"),
                       selectInput("comp_sex", label = "Sex", choices = c("Female", "Male")),
-                      sliderInput("comp_age", label = "Age", min = 0, max = 1, step = .01, value = 0, animate = animationOptions(loop = T, interval = 40)),
                       selectInput("comp_severity", label = "Severity", choices = c("mild", "typical", "severe"), selected = "typical"),
                       playwidgetOutput("control_comp"),
                       # sliderInput("transparency", label = "Mesh transparency", min = 0, max = 1, step = .1, value = 1),
@@ -226,7 +225,7 @@ ui <- fluidPage(
                                 trigger = "hover", 
                                 options = list(container = "body")
                       ),
-                      actionButton("update_comp", "Update Comparison", icon("refresh"))),
+                      actionButton("update_comp", "Update Comparison", icon("sync"))),
       width = 3, 
       tags$head(
         tags$link(rel = "stylesheet", type = "text/css", href = "style.css")
@@ -302,12 +301,18 @@ server <- function(input, output, session) {
   
   doutVar <- outVar#debounce(outVar, 2000)
   
-  observe({
-    slider_min <-  round(abs(min(doutVar()[[1]])))
-    slider_max <- round(max(doutVar()[[1]]))
-    # updateSliderInput(session, "age", label = "Age", min = slider_min, max = slider_max, value = mean(doutVar()[[1]]))
-    updateSliderInput(session, "age", label = "Age", min = 0, max = 1, value = 0)
-  })
+  output$age_data <- renderTable({
+    age.data <- range(doutVar()[[1]])
+    
+    data.frame("Min" = as.integer(abs(age.data[1])), "Current" = as.integer((diff(age.data) * input$age + 1)), "Max" = as.integer(age.data[2]), check.names = F)
+  }, align = "c", width = "100%")
+  
+  # observe({
+  #   slider_min <-  round(abs(min(doutVar()[[1]])))
+  #   slider_max <- round(max(doutVar()[[1]]))
+  #   # updateSliderInput(session, "age", label = "Age", min = slider_min, max = slider_max, value = mean(doutVar()[[1]]))
+  #   updateSliderInput(session, "age", label = "Age", min = 0, max = 1, value = 0.3)
+  # })
   
   morph_target <- eventReactive(input$Update, {
     #age morph target####
@@ -407,12 +412,18 @@ server <- function(input, output, session) {
     return(list(age.range, syndscores.main[d.meta.combined$Syndrome == input$reference]))
   }) 
   
-  observe({
-    slider_min <-  round(abs(min(outVar2()[[1]])))
-    slider_max <- round(max(outVar2()[[1]]))
-    # updateSliderInput(session, "age", label = "Age", min = slider_min, max = slider_max, value = mean(doutVar()[[1]]))
-    updateSliderInput(session, "comp_age", label = "Age", min = 0, max = 1, value = 0)
-  })
+  output$age_data_comp <- renderTable({
+    age.data <- range(outVar2()[[1]])
+    
+    data.frame("Min" = as.integer(abs(age.data[1])), "Current" = as.integer((diff(age.data) * input$comp_age + 1)), "Max" = as.integer(age.data[2]), check.names = F)
+  }, align = "c", width = "100%")
+  
+  # observe({
+  #   slider_min <-  round(abs(min(outVar2()[[1]])))
+  #   slider_max <- round(max(outVar2()[[1]]))
+  #   # updateSliderInput(session, "age", label = "Age", min = slider_min, max = slider_max, value = mean(doutVar()[[1]]))
+  #   updateSliderInput(session, "comp_age", label = "Age", min = 0, max = 1, value = 0)
+  # })
   
   morph_target_comparison <- eventReactive(input$update_comp, {
     #age morph target####
