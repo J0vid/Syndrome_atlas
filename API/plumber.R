@@ -6,6 +6,7 @@ library(promises)
 library(Morpho)
 future::plan("multisession")
 
+
 setwd("~/shiny/shinyapps/Syndrome_model/")
 # setwd("/srv/shiny-server/testing_ground/")
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")

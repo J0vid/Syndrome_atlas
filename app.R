@@ -485,6 +485,7 @@ server <- function(input, output, session) {
   })
   
   output$morphospace <- renderPlot({
+    
     node.code <- c("posterior_mandible" = 2, "nose" = 3,"anterior_mandible" = 4, "brow" = 5, "zygomatic" = 6, "premaxilla" = 7)
     
     
@@ -498,7 +499,7 @@ server <- function(input, output, session) {
 #
 #     sub.morpho <- procdist.array(synd.mat[modules[,selected.node] == 1,,], synd.mat[modules[,selected.node] == 1,, d.meta.combined$Syndrome == input$synd_comp])
     if(input$score_plot == "Raw score"){
-        morpho.df <- data.frame(full = syndrome_comps()[[1]]$face_score, sub = syndrome_comps()[[2]]$face_score, Syndrome = levels(d.meta.combined$Syndrome))
+        morpho.df <- data.frame(full = syndrome_comps()[[1]]$face_score, sub = syndrome_comps()[[2]]$face_score, Syndrome = syndrome_comps()[[1]]$Syndrome)
         #sort to get which synds to highlight
         highlight_df <- morpho.df[sort(morpho.df$sub, index.return = T)$ix,]
         highlighted_points <- geom_point(data = highlight_df[85:89,], aes(y = full, x = sub), color = "black", fill = "#a6192e", shape = 21, size = 3)
@@ -515,7 +516,7 @@ server <- function(input, output, session) {
       full_similarity <- sqrt((syndrome_comps()[[1]]$face_score - syndrome_comps()[[1]]$face_score[levels(d.meta.combined$Syndrome) == input$synd_comp])^2)
       module_similarity <- sqrt((syndrome_comps()[[2]]$face_score - syndrome_comps()[[2]]$face_score[levels(d.meta.combined$Syndrome) == input$synd_comp])^2)
 
-      morpho.df <- data.frame(full = full_similarity, sub = module_similarity, Syndrome = levels(d.meta.combined$Syndrome))
+      morpho.df <- data.frame(full = full_similarity, sub = module_similarity, Syndrome = syndrome_comps()[[1]]$Syndrome)
       #sort to get which synds to highlight
       highlight_df <- morpho.df[sort(morpho.df$sub, index.return = T)$ix,]
       highlighted_points <- geom_point(data = highlight_df[1:5,], aes(y = full, x = sub), color = "black", fill = "#a6192e", shape = 21, size = 3)
@@ -526,10 +527,9 @@ server <- function(input, output, session) {
                        size = 4,
                        color = c(rep("#a6192e", 5), rep("black", 5)),
                        fill = "white")
+
     }
-    #to do
-    #highlight 5 closest syndromes with names
-    #maybe all points should be names, with 5 highlighted
+   
     p <- ggplot(morpho.df) +
       geom_point(aes(y = full, x = sub), color = "black") +
       highlighted_points +
