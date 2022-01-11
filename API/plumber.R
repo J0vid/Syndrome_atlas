@@ -12,19 +12,21 @@ setwd("~/shiny/shinyapps/Syndrome_model/")
 load("data.Rdata")
 load("modules_400PCs.Rdata")
 # load("modules_PCA.Rdata")
-# eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
-# load("~/shiny/shinyapps/Syndrome_model/FB2_texture_PCA.Rdata")
-# texture.coefs <- lm(texture.pca$x[,1:300] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
-# texture.pcs <-  texture.pca$rotation[,1:300]
-# texture.mean <- texture.pca$center
+eye.index <- as.numeric(read.csv("~/shiny/shinyapps/Syndrome_model/lm_indices/eye_small.csv", header = F)) +1 # eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
+load("~/shiny/shinyapps/Syndrome_model/texture_300PCs.Rdata")
+texture.coefs <- lm(texture.pca$x[,1:300] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
+texture.pcs <-  texture.pca$rotation[,1:300]
+texture.mean <- texture.pca$center
 
 tmp.mesh <- atlas
 # synd.mshape <- d.registered$mshape
-# PC.eigenvectors <- d.registered$PCs[,1:200]
+
 d.meta.combined$Sex <- as.numeric(d.meta.combined$Sex == "F")
 d.meta.combined$Syndrome <- factor(d.meta.combined$Syndrome, levels = unique(d.meta.combined$Syndrome))
 
-num_pcs <- 500
+num_pcs <- 200
+PC.eigenvectors <- PC.eigenvectors[,1:num_pcs]
+PC.scores <- PC.scores[,1:num_pcs]
 meta.lm <- lm(PC.scores[,1:num_pcs] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)
 synd.lm.coefs <- meta.lm$coefficients
 
@@ -63,15 +65,12 @@ predtexture.lm <- function(fit, datamod, PC, mshape, gestalt_combo = NULL){
     final.texture <-  2*(predicted.texture3d) + t(col2rgb(atlas$material$color))
   } else {final.texture <- predicted.texture3d}
   
-  
   #scale values
   maxs <- apply(final.texture, 2, max)
   mins <- apply(final.texture, 2, min)
   additive.texture <- scale(final.texture, center = mins, scale = maxs - mins)
   hex.mean <- rgb(additive.texture, maxColorValue = 1)
-  
-  # dimnames(out)[[3]] <- names
-  # rownames(pred) <- names
+ 
   return(hex.mean)
 }
 
@@ -231,12 +230,12 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
 #* generate atlas morphtarget
 #* @param selected.sex predicted sex effect
 #* @param selected.synd predicted syndrome effect
-#* @param selected.severity one of mild, typical, or severe
+#* @param selected.severity one of Mild, Typical, or Severe
 #* @param min_age morphtarget min
 #* @param max_age morphtarget max
 #* @param severity_sd standard deviation of the severity scores
 #* @get /gestalt_morphtarget
-function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", selected.severity = "typical", min_age = 1, max_age = 20, severity_sd = .02, selected.color = "Generic") {
+function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", selected.severity = "Typical", min_age = 1, max_age = 20, severity_sd = .02, selected.color = "Generic") {
   selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
   if(selected.sex == "Female"){selected.sex <- 1.5
   } else if(selected.sex == "Male"){selected.sex <- -.5}
@@ -248,7 +247,7 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", select
   minage <- min_age
   nframes <- max_age
   
-  if(selected.severity == "mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "typical"){selected.severity <- 0}
+  if(selected.severity == "Mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "Severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "Typical"){selected.severity <- 0}
 future_promise({
   values.shape <- matrix(NA, ncol = 166131 * 3, nrow = 2)
   values_col <- matrix(NA, ncol = 166131 * 3, nrow = 2)
@@ -268,8 +267,11 @@ future_promise({
     
     if(selected.color == "Generic") col.tmp <- array(t(col2rgb(atlas$material$color[atlas$it])), dim = c(166131, 3, 1))/255
     if(selected.color == "Lightgrey") col.tmp <- array(211/255, dim = c(166131, 3, 1))
+    if(selected.color == "Generic + Gestalt") col.tmp <- array(predtexture.lm(texture.coefs, datamod, texture.pcs, texture.mean, gestalt_combo = T)[atlas$it], dim = c(166131, 3, 1))
     values_col[i,] <- geomorph::two.d.array(col.tmp)
   }
+  print(values_col[,1:6])
+  print(dim(predtexture.lm(texture.coefs, datamod, texture.pcs, texture.mean, gestalt_combo = T)))
   combined_values <- rbind(as.numeric(t(cbind(values.shape[1,], values_col[1,]))), as.numeric(t(cbind(values.shape[2,], values_col[2,]))))
   return(combined_values)
 })
@@ -283,7 +285,7 @@ future_promise({
 #* @param synd_comp compared syndrome
 #* @param facial_subset what part of the face to analyze
 #* @get /comparison_morphtarget
-function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_comp = "Achondroplasia", selected.severity = "typical", min_age = 1, max_age = 20, severity_sd = .02, facial_subregion = 1) {
+function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_comp = "Achondroplasia", selected.severity = "Typical", min_age = 1, max_age = 20, severity_sd = .02, facial_subregion = 1) {
   selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
   synd_comp <- factor(synd_comp, levels = levels(d.meta.combined$Syndrome))
   if(selected.sex == "Female"){selected.sex <- 1.5
@@ -297,14 +299,14 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_c
   minage <- min_age
   nframes <- max_age
   
-  if(selected.severity == "mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "typical"){selected.severity <- 0}
+  if(selected.severity == "Mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "Severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "Typical"){selected.severity <- 0}
   
   future_promise({
-  values <- matrix(NA, ncol = 166131 * 3, nrow = 2)
-  values_col <- matrix(NA, ncol = 166131 * 3, nrow = 2)
+  values <- matrix(NA, ncol = 166131 * 3, nrow = 3)
+  values_col <- matrix(NA, ncol = 166131 * 3, nrow = 3)
   
   for(i in 1:nrow(values)){
-    selected.age <- as.numeric(c(min_age, max_age)[i])
+    selected.age <- as.numeric(c(min_age, mean(c(as.numeric(min_age), as.numeric(max_age))), max_age)[i])
     
     main.res <- 1e10 * matrix(t(PC.eigenvectors %*% t(selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
     
@@ -336,7 +338,7 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_c
     values_col[i,] <- geomorph::two.d.array(col.tmp)
   }
   
-  combined_values <- rbind(as.numeric(t(cbind(values[1,], values_col[1,]))), as.numeric(t(cbind(values[2,], values_col[2,]))))
+  combined_values <- rbind(as.numeric(t(cbind(values[1,], values_col[1,]))), as.numeric(t(cbind(values[2,], values_col[2,]))), as.numeric(t(cbind(values[3,], values_col[3,]))))
   return(combined_values)
   })
   

@@ -193,7 +193,7 @@ ui <- fluidPage(
                        sliderInput("age", label = "Age", min = 0, max = 1, value = 0, step = .01, ticks = F, animate = animationOptions(loop = T, interval = 40)),
                        tableOutput("age_data"),
                        selectInput("sex", label = "Sex", choices = c("Female", "Male")),
-                       selectInput("severity", label = "Severity", choices = c("mild", "typical", "severe"), selected = "typical"),
+                       selectInput("severity", label = "Severity", choices = c("Mild", "Typical", "Severe"), selected = "Typical"),
                        playwidgetOutput("control"),
                        bsButton("texture_help", label = "", icon = icon("question"), style = "default", size = "extra-small"),
                        selectInput("texture", label = "Texture type", choices = c("Generic", "Lightgrey", "Gestalt", "Generic + Gestalt"), selected = "Lightgrey"),
@@ -211,7 +211,7 @@ ui <- fluidPage(
                       sliderInput("comp_age", label = "Age", min = 0, max = 1, step = .01, value = .3, ticks = F, animate = animationOptions(loop = T, interval = 40)),
                       tableOutput("age_data_comp"),
                       selectInput("comp_sex", label = "Sex", choices = c("Female", "Male")),
-                      selectInput("comp_severity", label = "Severity", choices = c("mild", "typical", "severe"), selected = "typical"),
+                      selectInput("comp_severity", label = "Severity", choices = c("Mild", "Typical", "Severe"), selected = "Typical"),
                       playwidgetOutput("control_comp"),
                       # sliderInput("transparency", label = "Mesh transparency", min = 0, max = 1, step = .1, value = 1),
                       # checkboxInput("displace", label = "Plot vectors?", value = F),
@@ -219,7 +219,7 @@ ui <- fluidPage(
                       bsButton("q1", label = "", icon = icon("question"), style = "default", size = "extra-small"),
                       selectInput("score_plot", label = "Plot type", choices = c("Similarity", "Raw score")),
                       bsPopover(id = "q1", title = "Plot types",
-                                content = paste0("When syndromes are very severe, they may outscore the selected syndrome. In these cases, it may be more informative to look at syndromes that are similar in the magnitude of their effects."
+                                content = paste0("When syndromes are very Severe, they may outscore the selected syndrome. In these cases, it may be more informative to look at syndromes that are similar in the magnitude of their effects."
                                 ),
                                 placement = "right", 
                                 trigger = "hover", 
@@ -235,18 +235,15 @@ ui <- fluidPage(
     mainPanel(
       tabsetPanel(id = "Atlas_tabs",#img(src='uc_logo.jpg', align = "right", height = 70 * 1.15, width = 90 * 1.25),
         tabPanel("Gestalt", br(),
-                 withSpinner(rglwidgetOutput("gestalt", width = "65vw", height="80vh"), type = 6, color = "#fca311")),
+                 withSpinner(rglwidgetOutput("gestalt", width = "65vw", height="55vh"), type = 6, color = "#fca311")),
         tabPanel("Comparisons", br(),
-                 withSpinner(rglwidgetOutput("comparison", width = "65vw", height="80vh"), type = 6, color = "#fca311"),
+                 withSpinner(rglwidgetOutput("comparison", width = "65vw", height="55vh"), type = 6, color = "#fca311"),
                  br(),
                  HTML("<center><font style=\"color: red; font-size: xx-large;\"> Bigger </font><font style=\"color: #fcfcfc; font-size: xx-large;\"> | </font><font style=\"color: lightgreen; font-size: xx-large;\"> Similar </font><font style=\"color: #fcfcfc; font-size: xx-large;\"> | </font><font style=\"color: blue; font-size: xx-large;\"> Smaller </font></center>"),
                  br(), plotOutput("morphospace"),
                  br(), 
                  HTML("<h3 style=\"color:black; text-align:center\">Select a facial partition by clicking the bubbles directly and then update the comparison.</h2>"),
                  visNetworkOutput("network", height="80vh")),
-        # tabPanel("Segments", br(), HTML("<p style=\"color:black;\">Select a facial partition using the dropdown menu or by clicking the bubbles directly.</p>"), 
-        #          visNetworkOutput("network", height="80vh")),
-        # tabPanel("Morphospace", br(), plotOutput("morphospace")),
         tabPanel("Submitted face", br(),
                  # withSpinner(rglwidgetOutput("submitted_face", width = "65vw", height="80vh"), type = 6, color = "#fca311"),
                  br(),
@@ -266,7 +263,6 @@ server <- function(input, output, session) {
   options(rgl.useNULL = TRUE)
   save <- options(rgl.inShiny = TRUE)
   on.exit(options(save))
-  xyz <- 166131
   
   close3d()
   
@@ -281,6 +277,7 @@ server <- function(input, output, session) {
   tmp.mesh <- atlas
   
   open3d()
+  par3d(userMatrix = front.face)
   shade3d(vcgSmooth(atlas), aspect = "iso", col = "lightgrey", specular = 1)
   objid <- ids3d()$id
   xyz <- rgl.attrib(objid[1], "vertices")
