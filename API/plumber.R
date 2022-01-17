@@ -4,17 +4,17 @@ library(Jovid)
 library(dplyr)
 library(promises)
 library(Morpho)
+library(Rvcg)
 future::plan("multisession")
 
-
-setwd("~/shiny/shinyapps/Syndrome_model/")
-# setwd("/srv/shiny-server/testing_ground/")
+# setwd("~/shiny/shinyapps/Syndrome_model/")
+setwd("/data/Syndrome_model_data/")
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
 load("data.Rdata")
 load("modules_400PCs.Rdata")
 # load("modules_PCA.Rdata")
-eye.index <- as.numeric(read.csv("~/shiny/shinyapps/Syndrome_model/lm_indices/eye_small.csv", header = F)) +1 # eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
-load("~/shiny/shinyapps/Syndrome_model/texture_300PCs.Rdata")
+eye.index <- as.numeric(read.csv("eye_small.csv", header = F)) +1 # eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
+load("texture_300PCs.Rdata")
 texture.coefs <- lm(texture.pca$x[,1:300] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
 texture.pcs <-  texture.pca$rotation[,1:300]
 texture.mean <- texture.pca$center
@@ -271,8 +271,7 @@ future_promise({
     if(selected.color == "Generic + Gestalt") col.tmp <- array(predtexture.lm(texture.coefs, datamod, texture.pcs, texture.mean, gestalt_combo = T)[atlas$it], dim = c(166131, 3, 1))
     values_col[i,] <- geomorph::two.d.array(col.tmp)
   }
-  print(values_col[,1:6])
-  print(dim(predtexture.lm(texture.coefs, datamod, texture.pcs, texture.mean, gestalt_combo = T)))
+  
   combined_values <- rbind(as.numeric(t(cbind(values.shape[1,], values_col[1,]))), as.numeric(t(cbind(values.shape[2,], values_col[2,]))))
   return(combined_values)
 })

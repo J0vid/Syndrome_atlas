@@ -13,8 +13,8 @@ library(shinyBS)
 library(grid)
 
 # meta.lm, d.registered
- setwd("~/shiny/shinyapps/Syndrome_model/")
- # setwd("/srv/shiny-server/testing_ground/")
+#setwd("~/shiny/shinyapps/Syndrome_model/")
+setwd("/data/Syndrome_model_data/")
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
  load("data.Rdata")
  load("module_indices.Rdata")
@@ -264,7 +264,7 @@ server <- function(input, output, session) {
   save <- options(rgl.inShiny = TRUE)
   on.exit(options(save))
   
-  close3d()
+  # close3d()
   
   selected.synd <- factor("Costello Syndrome", levels = levels(d.meta.combined$Syndrome))
   selected.sex <-1
@@ -304,12 +304,19 @@ server <- function(input, output, session) {
     data.frame("Min" = as.integer(abs(age.data[1])), "Current" = as.integer((diff(age.data) * input$age + 1)), "Max" = as.integer(age.data[2]), check.names = F)
   }, align = "c", width = "100%")
   
-  # observe({
-  #   slider_min <-  round(abs(min(doutVar()[[1]])))
-  #   slider_max <- round(max(doutVar()[[1]]))
-  #   # updateSliderInput(session, "age", label = "Age", min = slider_min, max = slider_max, value = mean(doutVar()[[1]]))
-  #   updateSliderInput(session, "age", label = "Age", min = 0, max = 1, value = 0.3)
-  # })
+  observeEvent(input$synd, {
+    # slider_min <-  round(abs(min(doutVar()[[1]])))
+    # slider_max <- round(max(doutVar()[[1]]))
+    # updateSliderInput(session, "age", label = "Age", min = slider_min, max = slider_max, value = mean(doutVar()[[1]]))
+    # updateSliderInput(session, "age", label = "Age", min = 0, max = 1, value = 0.31)
+    M.synds <- c("Klinefelter Syndrome", "XXYY")
+    F.synds <- c("XXX", "Turner Syndrome", "Craniofrontonasal Dysplasia", "18p Deletion")
+    if(input$synd %in% M.synds | input$synd %in% F.synds){
+      if(input$synd %in% M.synds){ sex.choices <- c("Male")
+      } else {sex.choices <- "Female"}
+    updateSelectInput(session, "sex", "Sex", choices = sex.choices)
+    }
+  })
   
   morph_target <- eventReactive(input$Update, {
     #age morph target####
@@ -333,33 +340,23 @@ server <- function(input, output, session) {
                              objid = objid)
     
     scene <- scene3d()
-    # rgl.close()
-    # return(list(scene, control, control2))
+    
     return(list(scene, control))
     
   })
   
-  
   output$gestalt <- renderRglwidget({
     rglwidget(morph_target()[[1]], controllers = c("control"))
   })
-  
   
   output$control <- renderPlaywidget({
     playwidget("gestalt", morph_target()[[2]],
                respondTo = "age", step = .01)
   })
   
-  #module selection####
+  #facial subregion selection####
   output$network <- renderVisNetwork({
-    # 63 modules
-    # nodes <- data.frame(id = 1:63, label = 1:63, shape = "image", image = "https://genopheno.ucalgary.ca/presentations/Child_health_data_science_Aponte/images/atlas.png", value = c(rep(120,21), rep(5,21), rep(2,21)))
-    # edges <- data.frame(from = rep(1:31, each = 2), to = 2:63)#c(2,3,4,5,6,7,8,9,10,11,12,13,14,15))
-    # 
-    # # 31 modules
-    # nodes <- data.frame(id = 1:31, label = 1:31, shape = "image", image = "https://genopheno.ucalgary.ca/presentations/Child_health_data_science_Aponte/images/atlas.png", value = c(rep(10,21), rep(5,10)))
-    # edges <- data.frame(from = rep(1:15, each = 2), to = 2:31)#c(2,3,4,5,6,7,8,9,10,11,12,13,14,15))
-    # 15 modules
+
     path_to_images <- "https://raw.githubusercontent.com/J0vid/Syndrome_atlas/main/mod_images/" #"https://genopheno.ucalgary.ca/presentations/Child_health_data_science_Aponte/mod_images/"
     module.names <- c("Whole face", "Nose", "Mandible/Sphenoid/Frontal", "Upper lip", "Nasal/Maxilla subset", "Cheek/Mandible", "Sphenoid/Frontal", "Nasolabial", "Philtrum", "Lateral Nasal", "Nose", "Cheek", "Chin/Mandible", "Frontal", "Orbital/Temporal/Sphenoid")
     module.names[1:7] <- c("face", "posterior_mandible", "nose", "anterior_mandible", "brow", "zygomatic", "premaxilla") #c("Whole Face", "Nose", "Eyes", "Jaw", "Chin", "Mouth", "Cheeks")
@@ -391,8 +388,7 @@ server <- function(input, output, session) {
     
   })
   
- 
-  #synd reactive####
+  #comparison reactive####
   outVar2 <- reactive({
     #get selected syndrome age range
     age.range <- d.meta.combined$Age[d.meta.combined$Syndrome == input$reference]
@@ -415,12 +411,19 @@ server <- function(input, output, session) {
     data.frame("Min" = as.integer(abs(age.data[1])), "Current" = as.integer((diff(age.data) * input$comp_age + 1)), "Max" = as.integer(age.data[2]), check.names = F)
   }, align = "c", width = "100%")
   
-  # observe({
-  #   slider_min <-  round(abs(min(outVar2()[[1]])))
-  #   slider_max <- round(max(outVar2()[[1]]))
-  #   # updateSliderInput(session, "age", label = "Age", min = slider_min, max = slider_max, value = mean(doutVar()[[1]]))
-  #   updateSliderInput(session, "comp_age", label = "Age", min = 0, max = 1, value = 0)
-  # })
+  observeEvent(input$synd_comp, {
+    # slider_min <-  round(abs(min(outVar2()[[1]])))
+    # slider_max <- round(max(outVar2()[[1]]))
+    # updateSliderInput(session, "age", label = "Age", min = slider_min, max = slider_max, value = mean(doutVar()[[1]]))
+    # updateSliderInput(session, "comp_age", label = "Age", min = 0, max = 1, value = 0)
+    M.synds <- c("Klinefelter Syndrome", "XXYY")
+    F.synds <- c("XXX", "Turner Syndrome", "Craniofrontonasal Dysplasia", "18p Deletion")
+    if(input$synd_comp %in% M.synds | input$synd_comp %in% F.synds){
+      if(input$synd_comp %in% M.synds){ sex.choices <- c("Male")
+      } else {sex.choices <- "Female"}
+      updateSelectInput(session, "comp_sex", "Sex", choices = sex.choices)
+    }
+  })
   
   morph_target_comparison <- eventReactive(input$update_comp, {
     #age morph target####
@@ -488,16 +491,12 @@ server <- function(input, output, session) {
     
     node.code <- c("posterior_mandible" = 2, "nose" = 3,"anterior_mandible" = 4, "brow" = 5, "zygomatic" = 6, "premaxilla" = 7)
     
-    
     if(is.null(input$network_selected)) selected.node <- 1 else if(input$network_selected == ""){
       selected.node <- 1} else{
         selected.node <- as.numeric(input$network_selected)}
 
     module.names <- colnames(modules)
-#
-#     full.morpho <- procdist.array(synd.mat, synd.mat[,,d.meta.combined$Syndrome == input$synd_comp])
-#
-#     sub.morpho <- procdist.array(synd.mat[modules[,selected.node] == 1,,], synd.mat[modules[,selected.node] == 1,, d.meta.combined$Syndrome == input$synd_comp])
+
     if(input$score_plot == "Raw score"){
         morpho.df <- data.frame(full = syndrome_comps()[[1]]$face_score, sub = syndrome_comps()[[2]]$face_score, Syndrome = syndrome_comps()[[1]]$Syndrome)
         #sort to get which synds to highlight
@@ -558,7 +557,6 @@ server <- function(input, output, session) {
 
     plot(g)
 
-
   })
   
   
@@ -566,14 +564,5 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui = ui, server = server)
-
-
-
-
-
-
-
-
-
 
 
