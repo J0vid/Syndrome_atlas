@@ -328,7 +328,7 @@ server <- function(input, output, session) {
     selected.sex <- input$sex
     selected.severity <- input$severity
     
-    raw_api_res <- httr::GET(url = paste0("http://localhost:6352", "/gestalt_morphtarget"),
+    raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/gestalt_morphtarget"),
                              query = list(selected.sex = selected.sex, selected.synd = selected.synd, selected.severity = selected.severity, min_age = min_age, max_age = max_age, selected.color = input$texture),
                              encode = "json")
     
@@ -442,7 +442,7 @@ server <- function(input, output, session) {
            selected.node <- as.numeric(input$network_selected)
            }
     
-    raw_api_res <- httr::GET(url = paste0("http://localhost:6352", "/comparison_morphtarget"),
+    raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/comparison_morphtarget"),
                              query = list(selected.sex = selected.sex, selected.synd = selected.synd, synd_comp = synd_comp, selected.severity = selected.severity, min_age = min_age, max_age = max_age, facial_subregion = selected.node),
                              encode = "json")
     
@@ -477,7 +477,7 @@ server <- function(input, output, session) {
       selected.node <- 1} else{
         selected.node <- as.numeric(input$network_selected)}
     
-    raw_api_res <- httr::GET(url = paste0("http://localhost:6352", "/similarity_scores"),
+    raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/similarity_scores"),
                              query = list(reference = reference, synd_comp = synd_comp, facial_subregion = selected.node),
                              encode = "json")
     
