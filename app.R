@@ -129,7 +129,7 @@ ui <- fluidPage(
                  withSpinner(rglwidgetOutput("comparison", width = "65vw", height="55vh"), type = 6, color = "#AE80E6"),
                  br(),
                  HTML("<center><font style=\"color: red; font-size: xx-large;\"> Bigger </font><font style=\"color: #fcfcfc; font-size: xx-large;\"> | </font><font style=\"color: lightgreen; font-size: xx-large;\"> Similar </font><font style=\"color: #fcfcfc; font-size: xx-large;\"> | </font><font style=\"color: blue; font-size: xx-large;\"> Smaller </font></center>"),
-                 br(), plotlyOutput("morphospace"),
+                 br(), plotOutput("morphospace"),
                  br(), 
                  HTML("<h3 style=\"color:black; text-align:center\">Select a facial partition by clicking the bubbles directly and then update the comparison.</h2>"),
                  visNetworkOutput("network", height="80vh")),
@@ -393,7 +393,7 @@ server <- function(input, output, session) {
     
   })
   
-  output$morphospace <- renderPlotly({
+  output$morphospace <- renderPlot({
     
     node.code <- c("posterior_mandible" = 2, "nose" = 3,"anterior_mandible" = 4, "brow" = 5, "zygomatic" = 6, "premaxilla" = 7)
     
@@ -460,7 +460,7 @@ server <- function(input, output, session) {
                               just=bg$just, name=bg$name, gp=bg$gp, vp=bg$vp)
     g$grobs[[1]] <- round_bg
 
-    ggplotly(p)
+    plot(g)
 
   })
   
