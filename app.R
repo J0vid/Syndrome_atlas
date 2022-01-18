@@ -65,7 +65,7 @@ ui <- fluidPage(
     sidebarPanel(
       conditionalPanel(condition = "input.Atlas_tabs=='Gestalt'",
                        selectInput("synd", label = "Syndrome", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Costello Syndrome"),
-                       sliderInput("age", label = "Age", min = 0, max = 1, value = 0, step = .01, ticks = F, animate = animationOptions(loop = T, interval = 40)),
+                       sliderInput("age", label = "Age", min = 0, max = 1, value = 0, step = .035, ticks = F, animate = animationOptions(loop = T, interval = 1)),
                        tableOutput("age_data"),
                        selectInput("sex", label = "Sex", choices = c("Female", "Male")),
                        selectInput("severity", label = "Severity", choices = c("Mild", "Typical", "Severe"), selected = "Typical"),
@@ -83,7 +83,7 @@ ui <- fluidPage(
       conditionalPanel(condition = "input.Atlas_tabs=='Comparisons'",
                       selectInput("reference", label = "Reference", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Unaffected Unrelated"),
                       selectInput("synd_comp", label = "Syndrome", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Costello Syndrome"),
-                      sliderInput("comp_age", label = "Age", min = 0, max = 1, step = .01, value = .3, ticks = F, animate = animationOptions(loop = T, interval = 40)),
+                      sliderInput("comp_age", label = "Age", min = 0, max = 1, step = .035, value = .3, ticks = F, animate = animationOptions(loop = T, interval = 25)),
                       tableOutput("age_data_comp"),
                       selectInput("comp_sex", label = "Sex", choices = c("Female", "Male")),
                       selectInput("comp_severity", label = "Severity", choices = c("Mild", "Typical", "Severe"), selected = "Typical"),
@@ -156,8 +156,8 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   
-  options(rgl.useNULL = F)
-  save <- options(rgl.inShiny = F)
+  options(rgl.useNULL = T)
+  save <- options(rgl.inShiny = T)
   on.exit(options(save))
   
   
@@ -207,8 +207,11 @@ server <- function(input, output, session) {
   observeEvent(input$synd, {
     # slider_min <-  round(abs(min(doutVar()[[1]])))
     # slider_max <- round(max(doutVar()[[1]]))
+    # animation_length <- (slider_max - slider_min) / 2000
+    # print(animation_length)
     # updateSliderInput(session, "age", label = "Age", min = slider_min, max = slider_max, value = mean(doutVar()[[1]]))
-    # updateSliderInput(session, "age", label = "Age", min = 0, max = 1, value = 0.31)
+    # how many years/second do I want for the animation? 
+    # updateSliderInput(session, "age", label = "Age", min = 0, max = 1, value = 0.29, step = animation_length)
     M.synds <- c("Klinefelter Syndrome", "XXYY")
     F.synds <- c("XXX", "Turner Syndrome", "Craniofrontonasal Dysplasia", "18p Deletion")
     if(input$synd %in% M.synds | input$synd %in% F.synds){
