@@ -11,13 +11,22 @@ library(plotly)
 library(ggrepel)
 library(shinyBS)
 library(grid)
+library(sparsediscrim)
 
 # meta.lm, d.registered
-#setwd("~/shiny/shinyapps/Syndrome_model/")
-setwd("/data/Syndrome_model_data/")
+setwd("~/shiny/shinyapps/Syndrome_model/")
+#setwd("/data/Syndrome_model_data/")
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
  load("data.Rdata")
  load("module_indices.Rdata")
+ load("pose.Rdata")
+ #calculations at startup that should make it into the startup file
+ hdrda.df <- data.frame(synd = d.meta.combined$Syndrome, PC.scores[,1:200])
+ hdrda.mod <- hdrda(synd ~ ., data = hdrda.df)
+ 
+ synd.means <- matrix(NA, nrow = length(unique(d.meta.combined$Syndrome)), ncol = 200)
+ for(i in 1:nrow(synd.means)) synd.means[i,] <- colMeans(PC.scores[d.meta.combined$Syndrome == levels(d.meta.combined$Syndrome)[i], 1:200])
+ 
 
  # eye.index <- as.numeric(read.csv("~/shiny/shinyapps/Syndrome_model/lm_indices/eye_small.csv", header = F)) +1#as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
 
@@ -47,140 +56,6 @@ setwd("/data/Syndrome_model_data/")
    return(out)
  }
  
- render <- function(x,...) UseMethod("render")
- 
- render.meshDist <- function(x,from=NULL,to=NULL,steps=NULL,ceiling=NULL,uprange=NULL,tol=NULL,tolcol=NULL,rampcolors=NULL,NAcol=NULL,displace=FALSE,shade=TRUE,sign=NULL,add=FALSE,scaleramp=NULL,titleplot="Distance in mm",...) {
-   clost <- x$clost
-   dists <- x$dists
-   distsOrig <- dists
-   colorall <- x$cols
-   colramp <- x$colramp
-   params <- x$params
-   distqual <- x$distqual
-   if (!is.null(tolcol))
-     tolcol <- colorRampPalette(tolcol)(1)
-   if (!add) {
-     if (rgl.cur() !=0)
-       rgl.clear()
-   }
-   if (!is.null(from) || !is.null(to) || !is.null(uprange) ||  !is.null(tol)  ||  !is.null(sign) || !is.null(steps) || !is.null(rampcolors) || !is.null(NAcol) || !is.null(tolcol) || !is.null(scaleramp)) {
-     neg=FALSE
-     colMesh <- x$colMesh
-     if(is.null(steps))
-       steps <- x$params$steps
-     if (is.null(rampcolors))
-       rampcolors <- x$params$rampcolors
-     if (is.null(NAcol))
-       NAcol <- x$params$NAcol
-     if (is.null(tolcol))
-       tolcol <- x$params$tolcol
-     if (is.null(tol))
-       tol <- x$params$tol
-     if(is.null(sign))
-       sign <- x$params$sign
-     if (!sign) {
-       distsOrig <- dists
-       dists <- abs(dists)
-     }
-     if(is.null(ceiling))
-       ceiling <- x$params$ceiling
-     if(is.null(uprange))
-       uprange <- x$params$uprange
-     
-     if (is.null(from)) {
-       mindist <- min(dists)
-       if (sign && mindist < 0 ) {
-         from <- quantile(dists,probs=(1-uprange)) 
-         neg <- TRUE            
-       } else {
-         from <- 0
-       }             
-     }
-     if (is.null(scaleramp))
-       scaleramp <- x$params$scaleramp
-     
-     if (from < 0)
-       neg <- TRUE
-     if (is.null(to))
-       to <- quantile(dists,probs=uprange)    
-     if(ceiling)
-       to <- ceiling(to)
-     
-     to <- to+1e-10
-     #ramp <- blue2green2red(maxseq*2)
-     ramp <- colorRampPalette(rampcolors)(steps-1)
-     colseq <- seq(from=from,to=to,length.out=steps)
-     coldif <- colseq[2]-colseq[1]
-     if (neg && sign) {
-       
-       negseq <- length(which(colseq<0))
-       poseq <- steps-negseq
-       maxseq <- max(c(negseq,poseq))
-       if (scaleramp) {
-         ramp <- colorRampPalette(rampcolors)(maxseq*2)
-         ramp <- ramp[c(maxseq-negseq+1):(maxseq+poseq)]
-         
-       }
-       else
-         ramp <- colorRampPalette(rampcolors)(steps-1)
-       distqual <- ceiling(((dists+abs(from))/coldif)+1e-14)
-       #distqual[which(distqual < 1)] <- steps+10
-     } else if (from > 0) {
-       distqual <- ceiling(((dists-from)/coldif)+1e-14)
-     } else {
-       distqual <- ceiling((dists/coldif)+1e-14)
-     }
-     distqual[which(distqual < 1)] <- steps+10
-     colorall <- ramp[distqual]
-     if (!is.null(tol)) {
-       if ( length(tol) < 2 ) {
-         if (sign) {
-           tol <- c(-tol,tol)
-         } else {
-           tol <- c(0,tol)
-         }
-       }
-       good <- which(abs(dists) < tol[2])
-       colorall[good] <- tolcol
-     }
-     colfun <- function(x){x <- colorall[x];return(x)}
-     colMesh$material$color <- colorall
-     colMesh$material$color[is.na(colMesh$material$color)] <- NAcol
-     #colMesh$material$color <- matrix(colfun(colMesh$it),dim(colMesh$it))
-     colramp <- list(1,colseq, matrix(data=colseq, ncol=length(colseq),nrow=1),col=ramp,useRaster=T,ylab=titleplot,xlab="",xaxt="n")
-   } else {
-     if (is.null(tol))
-       tol <- x$params$tol
-     colramp <- x$colramp
-     colMesh <- x$colMesh
-   }
-   if (is.null(tolcol))
-     tolcol <- x$params$tolcol
-   
-   if (shade)
-     shade3d(vcgUpdateNormals(colMesh),specular="black",...)
-   if (displace) {
-     dismesh <- colMesh
-     vl <- dim(colMesh$vb)[2]
-     dismesh$vb <- cbind(colMesh$vb,rbind(clost,1))
-     dismesh$it <- rbind(1:vl,1:vl,(1:vl)+vl)
-     dismesh$material$color <- colorall
-     dismesh$normals <- cbind(dismesh$normals, dismesh$normals)
-     wire3d(dismesh,lit=FALSE)
-   }
-   diffo <- ((colramp[[2]][2]-colramp[[2]][1])/2)
-   image(colramp[[1]],colramp[[2]][-1]-diffo,t(colramp[[3]][1,-1])-diffo,col=colramp[[4]],useRaster=TRUE,ylab=titleplot,xlab="",xaxt="n")
-   if (!is.null(tol)) {
-     if (sum(abs(tol)) != 0)
-       image(colramp[[1]],c(tol[1],tol[2]),matrix(c(tol[1],tol[2]),1,1),col=tolcol,useRaster=TRUE,add=TRUE)
-   }
-   params <- list(steps=steps,from=from,to=to,uprange=uprange,ceiling=ceiling,sign=sign,tol=tol,rampcolors=rampcolors,NAcol=NAcol,tolcol=tolcol)
-   out <- list(colMesh=colMesh,dists=distsOrig,cols=colorall,colramp=colramp,params=params,distqual=distqual,clost=clost)
-   
-   class(out) <- "meshDist"
-   invisible(out)
- }
-
 ui <- fluidPage(
   tags$head(tags$style(HTML('.irs-from, .irs-to, .irs-min, .irs-max, .irs-single {
             visibility: hidden !important;
@@ -226,6 +101,20 @@ ui <- fluidPage(
                                 options = list(container = "body")
                       ),
                       actionButton("update_comp", "Update Comparison", icon("sync"))),
+      conditionalPanel(condition = "input.Atlas_tabs=='Submitted face'",
+                       fileInput("file1", "",
+                                 multiple = T,
+                                 accept = c(".obj", ".ply", ".png", ".pp", ".csv")
+                                 ),
+                       splitLayout(cellWidths = c("50%", "50%"),
+                                   textInput("current_age", label = "Age (years)", value = "", placeholder = "ie. 9.5"),
+                                   selectInput("current_sex", label = "Sex", selected = "Male", choices = c("Male", "Female"))
+                                  ),
+                       checkboxGroupInput("submitted_heatmap", label = "Morphology", choices = "Compare to syndrome?"),
+                       conditionalPanel(condition = "input.submitted_heatmap == 'Compare to syndrome?'",
+                                        selectInput("submitted_comp", label = "Syndrome", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Costello Syndrome")
+                                        )
+                       ),
       width = 3, 
       tags$head(
         tags$link(rel = "stylesheet", type = "text/css", href = "style.css")
@@ -235,19 +124,26 @@ ui <- fluidPage(
     mainPanel(
       tabsetPanel(id = "Atlas_tabs",#img(src='uc_logo.jpg', align = "right", height = 70 * 1.15, width = 90 * 1.25),
         tabPanel("Gestalt", br(),
-                 withSpinner(rglwidgetOutput("gestalt", width = "65vw", height="55vh"), type = 6, color = "#fca311")),
+                 withSpinner(rglwidgetOutput("gestalt", width = "65vw", height="55vh"), type = 6, color = "#AE80E6")),
         tabPanel("Comparisons", br(),
-                 withSpinner(rglwidgetOutput("comparison", width = "65vw", height="55vh"), type = 6, color = "#fca311"),
+                 withSpinner(rglwidgetOutput("comparison", width = "65vw", height="55vh"), type = 6, color = "#AE80E6"),
                  br(),
                  HTML("<center><font style=\"color: red; font-size: xx-large;\"> Bigger </font><font style=\"color: #fcfcfc; font-size: xx-large;\"> | </font><font style=\"color: lightgreen; font-size: xx-large;\"> Similar </font><font style=\"color: #fcfcfc; font-size: xx-large;\"> | </font><font style=\"color: blue; font-size: xx-large;\"> Smaller </font></center>"),
-                 br(), plotOutput("morphospace"),
+                 br(), plotlyOutput("morphospace"),
                  br(), 
                  HTML("<h3 style=\"color:black; text-align:center\">Select a facial partition by clicking the bubbles directly and then update the comparison.</h2>"),
                  visNetworkOutput("network", height="80vh")),
         tabPanel("Submitted face", br(),
-                 # withSpinner(rglwidgetOutput("submitted_face", width = "65vw", height="80vh"), type = 6, color = "#fca311"),
+                 column(width = 12,
+                 withSpinner(rglwidgetOutput("submitted_face", width = "65vw", height="55vh"), type = 6, color = "#AE80E6"),
+                 ),
                  br(),
-                 plotlyOutput("posterior_scree")),
+                 column(width = 12,
+                  br(),
+                 shinydashboard::box(plotlyOutput("posterior_scree"), width = 6),
+                 br(),
+                 shinydashboard::box(plotlyOutput("personal_morphospace"), width = 6)
+                 )),
         tabPanel("About", br(), HTML("<p style=\"color:black;\">This app aims to help clinical geneticists better understand the characteristic craniofacial features of various genetic syndromes. There are 3 sections to this app and here is my description of how they work. Here are the people that made this app possible.</p>"))#, 
         #includeHTML("~/shiny/shinyapps/Syndrome_gestalts/about_test.html"), 
         #includeCSS("~/shiny/shinyapps/Syndrome_gestalts/test.css"))
@@ -260,13 +156,14 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   
-  options(rgl.useNULL = TRUE)
-  save <- options(rgl.inShiny = TRUE)
+  options(rgl.useNULL = F)
+  save <- options(rgl.inShiny = F)
   on.exit(options(save))
   
-  # close3d()
   
-  selected.synd <- factor("Costello Syndrome", levels = levels(d.meta.combined$Syndrome))
+  # initial.scene <- reactive({
+  # close3d()
+  selected.synd <- factor("Unaffected Unrelated", levels = levels(d.meta.combined$Syndrome))
   selected.sex <-1
   selected.age <- 19 
   
@@ -277,10 +174,13 @@ server <- function(input, output, session) {
   tmp.mesh <- atlas
   
   open3d()
-  par3d(userMatrix = front.face)
+  shinySetPar3d(userMatrix = front.face2, session = session)
+  par3d(userMatrix = front.face2)
   shade3d(vcgSmooth(atlas), aspect = "iso", col = "lightgrey", specular = 1)
   objid <- ids3d()$id
-  xyz <- rgl.attrib(objid[1], "vertices")
+  xyz <- rgl.attrib(objid[length(objid)], "vertices")
+  # return(list(objid, xyz))
+  # })
   
   #synd reactive####
   outVar <- reactive({
@@ -322,7 +222,8 @@ server <- function(input, output, session) {
     #age morph target####
     min_age <- round(abs(min(doutVar()[[1]])))
     max_age <- round(max(doutVar()[[1]]))
-    
+    # xyz <- initial.scene()[[2]]
+    # objid <- initial.scene()[[1]]
     #api call
     selected.synd <- input$synd
     selected.sex <- input$sex
@@ -346,6 +247,7 @@ server <- function(input, output, session) {
   })
   
   output$gestalt <- renderRglwidget({
+    par3d(userMatrix = front.face2, zoom = .75)
     rglwidget(morph_target()[[1]], controllers = c("control"))
   })
   
@@ -460,6 +362,7 @@ server <- function(input, output, session) {
   })
   
   output$comparison <- renderRglwidget({
+    par3d(userMatrix = front.face2, zoom = .75)
     rglwidget(morph_target_comparison()[[1]], controllers = c("control_comp"))
   })
   
@@ -487,7 +390,7 @@ server <- function(input, output, session) {
     
   })
   
-  output$morphospace <- renderPlot({
+  output$morphospace <- renderPlotly({
     
     node.code <- c("posterior_mandible" = 2, "nose" = 3,"anterior_mandible" = 4, "brow" = 5, "zygomatic" = 6, "premaxilla" = 7)
     
@@ -535,7 +438,6 @@ server <- function(input, output, session) {
       tmp_labels +
       tmp_ylab +
       tmp_xlab +
-      # ylim(-.25,3.5) +
       theme_bw() +
       theme(plot.background = element_rect(fill = "#fcfcfc"),
             axis.text = element_text(color = "black"),
@@ -555,11 +457,105 @@ server <- function(input, output, session) {
                               just=bg$just, name=bg$name, gp=bg$gp, vp=bg$vp)
     g$grobs[[1]] <- round_bg
 
-    plot(g)
+    ggplotly(p)
 
   })
   
+  #elements of the face_submission branch####
+  mesh.et.lms <- reactive({
+    ex_mesh <- vcgSmooth(file2mesh("~/shiny/shinyapps/Perception/to_bake/da_reg.ply"))
+    sample1k <- sample(1:27903, 200)
+    #register landmarks to the space
+    registered.mesh <- rotmesh.onto(ex_mesh, t(ex_mesh$vb[-4, sample1k]), synd.mshape[sample1k,], scale = T)$mesh
+    registered.mesh
+    })
   
+  output$submitted_face <- renderRglwidget({
+    pdf(NULL)
+    dev.off()
+    
+    ex_mesh <- mesh.et.lms()
+    if(is.null(input$submitted_heatmap)){
+      print(shinyGetPar3d("userMatrix", session))
+    par3d(userMatrix = front.face2, zoom = .75)
+    plot3d(ex_mesh, col = "lightgrey", axes = F, specular = 1, xlab = "", ylab = "", zlab = "", aspect = "iso")  
+    rglwidget()
+    } else if(input$submitted_heatmap == "Compare to syndrome?"){
+      #if heatmap, register face, make comp same age?, compare
+      selected.sex <- input$current_sex
+      selected.age <- input$current_age
+      selected.synd <- input$submitted_comp
+      
+      raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/predshape"),
+                               query = list(selected.sex = selected.sex, selected.age = selected.age, selected.synd = selected.synd),
+                               encode = "json")
+      
+      pred.comp <- ex_mesh
+      pred.comp$vb[-4,] <- t(jsonlite::fromJSON(httr::content(raw_api_res, "text")))/1e10
+      
+      par3d(userMatrix = front.face2, zoom = .75)
+      meshDist(ex_mesh, pred.comp)
+      rglwidget()
+      
+    }
+    
+    
+    
+  })
+  
+  output$posterior_scree <- renderPlotly({
+    
+    projected.mesh <- getPCscores(t(mesh.et.lms()$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
+    # projected.mesh <- getPCscores(t(registered.mesh$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
+    
+    #classify individual's scores using the model
+    # colnames(projected.mesh) <- colnames(PC.scores)
+    
+    posterior.distribution <- predict(hdrda.mod, newdata = projected.mesh, type = "prob")$post
+     
+    posterior.distribution <- sort(posterior.distribution, decreasing = T)
+
+    #used to be part of plot.df: ID = as.factor(1:10),
+    plot.df <- data.frame(Probs = round(as.numeric(posterior.distribution[1:10]), digits = 4), Syndrome = as.factor(names(posterior.distribution[1:10])))
+    plot.df$Syndrome <- as.character(plot.df$Syndrome)
+    plot.df$Syndrome[plot.df$Syndrome == "Unrelated Unaffected"] <- "Non-syndromic"
+
+    plot_ly(data = plot.df, x = ~Syndrome, y = ~Probs, type = "bar", color = I("grey"), hoverinfo = paste0("Syndrome: ", "x", "<br>", "Probability: ", "y")) %>%
+      layout(xaxis = list(tickvals = gsub("_", " ", plot.df$Syndrome), tickangle = 45, ticktext = c(Syndrome = plot.df$Syndrome, Probability = plot.df$Probs), title = "<b>Syndrome</b>"),
+             yaxis = list(title = "<b>Class probability</b>"),
+             paper_bgcolor='white',
+             margin = list(b = 125, l = 50, r = 100)
+      )
+  })
+  
+  output$personal_morphospace <- renderPlotly({
+    
+    projected.mesh <- getPCscores(t(mesh.et.lms()$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
+    # projected.mesh <- getPCscores(t(registered.mesh$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
+    
+    selected.sex <- input$current_sex
+    selected.age <- input$current_age
+
+    raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/predPC"),
+                             query = list(selected.sex = selected.sex, selected.age = selected.age),
+                             encode = "json")
+
+    parsed_res <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))/1e10
+    
+    plot.df <- data.frame(Syndrome = c("Submitted mesh", levels(d.meta.combined$Syndrome)), Scores = rbind(projected.mesh[1:2], parsed_res))
+    plot.df$Syndrome <- as.character(plot.df$Syndrome)
+    plot.df$Syndrome[plot.df$Syndrome == "Unrelated Unaffected"] <- "Non-syndromic"
+    
+    plot_ly(data = plot.df, x = ~round(Scores.1, digits = 3), y = ~round(Scores.2,digits = 3), text = ~Syndrome, type = "scatter", marker = list(size = 10), 
+            mode = "markers+text",
+            textposition = 'top center', color = I(c(2, rep("#AE80E6", length(unique(d.meta.combined$Syndrome))))), hoverinfo = paste0("PC1 score: ", "x", "<br>", "PC2 score: ", "y")) %>%
+      layout(xaxis = list(title = "<b>PC1 score</b>"),
+             yaxis = list(title = "<b>PC2 score</b>"),
+             paper_bgcolor='white',
+             margin = list(b = 25, l = 25, r = 25, t = 25)
+      ) %>%
+      style(borderRadius = '15px')
+  })
   
 }
 

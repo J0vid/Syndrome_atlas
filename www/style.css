@@ -1,0 +1,137 @@
+body {background-color: #e5e5e5; }
+.well {
+  background-color: #fcfcfc;
+  border-radius: 20px;
+  box-shadow: 4px 10px 10px 0 rgba(0,0,0,.1);
+}
+.control-label {color: black;}
+.irs-min, .irs-max {color: black;}
+.checkbox {color: black;}
+.nav-tabs > li > a {
+    background-color: transparent;
+    color: black;
+  }
+  
+.nav-tabs > li > a:hover {
+    background-color: #e5e5e5;
+    border-color: transparent;
+    color: white;
+  }
+       
+.tabbable > .nav > li[class=active] > a {
+    background-color: #fcfcfc; 
+    color:black;
+    border-color: transparent;
+  }
+  
+#button {
+  background-color:yellow; 
+  position:fixed; 
+  margin-bottom:50px;     
+  opacity:1; 
+  height:50px; 
+  z-index:5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+         }
+    
+.skin-blue .main-header .navbar {
+    background-color: white;
+    border-bottom: 10px solid #ddd;
+      }
+  
+.vis-network{
+  background-color: #fcfcfc;
+  border-radius: 20px;
+}
+
+.row{
+  max-width: 1440px;
+}
+
+.box-body{
+  background-color: white;
+  border-bottom-right-radius: 5px;
+  border-bottom-left-radius: 5px;
+}
+
+.box-header{
+    color: black;
+    border-top-left-radius:5px;
+    border-top-right-radius:5px;
+  }
+
+.box{
+    background-color: white;
+    border-bottom-color:#6C7994;
+    border-left-color:#6C7994;
+    border-right-color:#6C7994;
+    border-top-color:#91815D;
+    border-top-left-radius:5px;
+    border-top-right-radius:5px;
+    max-width: 1400px;
+    box-shadow: 4px 10px 10px 0 rgba(0,0,0,.1);
+  }
+  
+.col-sm-12{
+  width: 65vw;
+}
+
+#maindivnetwork{
+  height: 90%;
+}
+
+#gestalt{
+  border-radius: 20px 20px 20px 20px;
+}
+  
+#canvas{
+  border-radius: 20px 20px 20px 20px;
+}    
+
+canvas{
+    border-radius: 20px 20px 20px 20px;
+    box-shadow: 12px 12px 15px 1px rgba(0,0,0,.1);
+}
+
+img{
+  border-radius: 40px;
+}
+
+#q1{   
+    position: absolute;
+    right: 35px;
+    }
+
+#texture_help{   
+    position: absolute;
+    right: 35px;
+    }
+
+
+
+@media only screen and (max-width: 768px) {
+  /* For phones */
+#gestalt > canvas{
+   border-radius: 20px 20px 20px 20px;
+   width: 93.5vw;
+}
+
+#comparison > canvas{
+   border-radius: 20px 20px 20px 20px;
+   width: 93.5vw;
+}
+
+#submitted_face > canvas{
+   border-radius: 20px 20px 20px 20px;
+   width: 90.5vw;
+}
+
+.col-sm-12{
+  width: 90.5vw;
+  height: 30vh;
+  
+}
+
+}

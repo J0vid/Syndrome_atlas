@@ -5,10 +5,10 @@ library(dplyr)
 library(promises)
 library(Morpho)
 library(Rvcg)
-future::plan("multisession")
+future::plan("multicore")
 
-# setwd("~/shiny/shinyapps/Syndrome_model/")
-setwd("/data/Syndrome_model_data/")
+setwd("~/shiny/shinyapps/Syndrome_model/")
+# setwd("/data/Syndrome_model_data/")
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
 load("data.Rdata")
 load("modules_400PCs.Rdata")
@@ -101,17 +101,17 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
 #* @param selected.synd predicted syndrome effect
 #* @get /predPC
 function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondroplasia") {
-  selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
+  # selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
   if(selected.sex == "Female"){selected.sex <-1
   } else if(selected.sex == "Male"){selected.sex <- 0} 
   selected.age <- as.numeric(selected.age)
   
-  predicted.shape <- matrix(NA, nrow = 50, ncol = 500)
+  predicted.shape <- matrix(NA, nrow = length(unique(d.meta.combined$Syndrome)), ncol = 2)
   future_promise({
-    for(i in 1:50){
-      selected.age <- i
+    for(i in 1:nrow(predicted.shape)){
+      selected.synd <- factor(levels(d.meta.combined$Syndrome)[i], levels = levels(d.meta.combined$Syndrome))
       datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
-    predicted.shape[i,] <- predPC.lm(synd.lm.coefs, datamod)
+    predicted.shape[i,] <- predPC.lm(synd.lm.coefs, datamod)[1:2]
     }
     predicted.shape
   })
