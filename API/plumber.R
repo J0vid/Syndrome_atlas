@@ -10,7 +10,9 @@ future::plan("multicore")
 setwd("~/shiny/shinyapps/Syndrome_model/")
 # setwd("/data/Syndrome_model_data/")
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
-load("data.Rdata")
+# load("data.Rdata")
+load("data_sparse.Rdata")
+xyz.num <- 11628
 load("modules_400PCs.Rdata")
 # load("modules_PCA.Rdata")
 eye.index <- as.numeric(read.csv("eye_small.csv", header = F)) +1 # eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
@@ -22,26 +24,26 @@ texture.mean <- texture.pca$center
 tmp.mesh <- atlas
 # synd.mshape <- d.registered$mshape
 
-d.meta.combined$Sex <- as.numeric(d.meta.combined$Sex == "F")
-d.meta.combined$Syndrome <- factor(d.meta.combined$Syndrome, levels = unique(d.meta.combined$Syndrome))
-
-num_pcs <- 200
-PC.eigenvectors <- PC.eigenvectors[,1:num_pcs]
-PC.scores <- PC.scores[,1:num_pcs]
-meta.lm <- lm(PC.scores[,1:num_pcs] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)
-synd.lm.coefs <- meta.lm$coefficients
-
-
-predshape.lm <- function(fit, datamod, PC, mshape){
-  dims <- dim(mshape)
-  mat <- model.matrix(datamod)
-  pred <- mat %*% fit
-
-  predPC <- (PC %*% t(pred))
-  out <- mshape + matrix(predPC, dims[1], dims[2], byrow = F)
-
-  return(out * 1e10)
-}
+# d.meta.combined$Sex <- as.numeric(d.meta.combined$Sex == "F")
+# d.meta.combined$Syndrome <- factor(d.meta.combined$Syndrome, levels = unique(d.meta.combined$Syndrome))
+# 
+# num_pcs <- 200
+# PC.eigenvectors <- PC.eigenvectors[,1:num_pcs]
+# PC.scores <- PC.scores[,1:num_pcs]
+# meta.lm <- lm(PC.scores[,1:num_pcs] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)
+# synd.lm.coefs <- meta.lm$coefficients
+# 
+# 
+# predshape.lm <- function(fit, datamod, PC, mshape){
+#   dims <- dim(mshape)
+#   mat <- model.matrix(datamod)
+#   pred <- mat %*% fit
+# 
+#   predPC <- (PC %*% t(pred))
+#   out <- mshape + matrix(predPC, dims[1], dims[2], byrow = F)
+# 
+#   return(out * 1e10)
+# }
 
 predPC.lm <- function(fit, datamod){
   mat <- model.matrix(datamod)
@@ -227,7 +229,6 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
   
 }
 
-
 #* generate atlas morphtarget
 #* @param selected.sex predicted sex effect
 #* @param selected.synd predicted syndrome effect
@@ -250,8 +251,9 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", select
   
   if(selected.severity == "Mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "Severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "Typical"){selected.severity <- 0}
 future_promise({
-  values.shape <- matrix(NA, ncol = 166131 * 3, nrow = 2)
-  values_col <- matrix(NA, ncol = 166131 * 3, nrow = 2)
+  values.shape <- matrix(NA, ncol = xyz.num * 3, nrow = 2)
+  values_col <- matrix(NA, ncol = xyz.num * 3, nrow = 2)
+
   for(i in 1:nrow(values.shape)){
     selected.age <- as.numeric(c(min_age, max_age)[i])
     
@@ -263,12 +265,12 @@ future_promise({
     tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
     final.shape <- vcgSmooth(tmp.mesh)
     
-    shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(166131, 3, 1))
+    shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(xyz.num, 3, 1))
     values.shape[i,] <- geomorph::two.d.array(shape.tmp)
     
-    if(selected.color == "Generic") col.tmp <- array(t(col2rgb(atlas$material$color[atlas$it])), dim = c(166131, 3, 1))/255
-    if(selected.color == "Lightgrey") col.tmp <- array(211/255, dim = c(166131, 3, 1))
-    if(selected.color == "Generic + Gestalt") col.tmp <- array(predtexture.lm(texture.coefs, datamod, texture.pcs, texture.mean, gestalt_combo = T)[atlas$it], dim = c(166131, 3, 1))
+    if(selected.color == "Generic") col.tmp <- array(t(col2rgb(atlas$material$color[atlas$it])), dim = c(xyz.num, 3, 1))/255
+    if(selected.color == "Lightgrey") col.tmp <- array(211/255, dim = c(xyz.num, 3, 1))
+    if(selected.color == "Generic + Gestalt") col.tmp <- array(predtexture.lm(texture.coefs, datamod, texture.pcs, texture.mean, gestalt_combo = T)[atlas$it], dim = c(xyz.num, 3, 1))
     values_col[i,] <- geomorph::two.d.array(col.tmp)
   }
   
@@ -302,8 +304,8 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_c
   if(selected.severity == "Mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "Severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "Typical"){selected.severity <- 0}
   
   future_promise({
-  values <- matrix(NA, ncol = 166131 * 3, nrow = 3)
-  values_col <- matrix(NA, ncol = 166131 * 3, nrow = 3)
+  values <- matrix(NA, ncol = xyz.num * 3, nrow = 3)
+  values_col <- matrix(NA, ncol = xyz.num * 3, nrow = 3)
   
   for(i in 1:nrow(values)){
     selected.age <- as.numeric(c(min_age, mean(c(as.numeric(min_age), as.numeric(max_age))), max_age)[i])
@@ -316,7 +318,7 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_c
     tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
     final.shape <- vcgSmooth(tmp.mesh)
     
-    shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(166131, 3, 1))
+    shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(xyz.num, 3, 1))
     values[i,] <- geomorph::two.d.array(shape.tmp)
     
     datamod_comp <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + synd_comp + selected.age:synd_comp
@@ -327,13 +329,13 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_c
     
     #if a facial subregion is selected, let's only color the region and leave everything else grey
     if(facial_subregion == 1){
-    col.tmp <- array(t(col2rgb(meshDist(final.shape, final.shape2, plot = F)$cols[atlas$it])), dim = c(166131, 3, 1))/255
+    col.tmp <- array(t(col2rgb(meshDist(final.shape, final.shape2, plot = F)$cols[atlas$it])), dim = c(xyz.num, 3, 1))/255
     } else{
       node.code <- c("posterior_mandible" = 2, "nose" = 3,"anterior_mandible" = 4, "brow" = 5, "zygomatic" = 6, "premaxilla" = 7)
       tmp.meshdist <- meshDist(final.shape, final.shape2, plot = F)$cols
       tmp.meshdist[modules[,names(node.code)[node.code == facial_subregion]] == F] <- "#d3d3d3"
       
-      col.tmp <- array(t(col2rgb(tmp.meshdist[atlas$it])), dim = c(166131, 3, 1))/255
+      col.tmp <- array(t(col2rgb(tmp.meshdist[atlas$it])), dim = c(xyz.num, 3, 1))/255
     }
     values_col[i,] <- geomorph::two.d.array(col.tmp)
   }
