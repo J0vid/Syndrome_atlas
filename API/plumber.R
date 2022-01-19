@@ -12,7 +12,8 @@ setwd("~/shiny/shinyapps/Syndrome_model/")
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
 # load("data.Rdata")
 load("data_sparse.Rdata")
-xyz.num <- 11628
+xyz.num <- 11628 #sparse
+xyz.num <- 166131 #dense
 load("modules_400PCs.Rdata")
 # load("modules_PCA.Rdata")
 eye.index <- as.numeric(read.csv("eye_small.csv", header = F)) +1 # eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1

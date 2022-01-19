@@ -2,6 +2,28 @@ library(shiny)
 library(rgl)
 library(Morpho)
 
+atlas <- new_atlas
+tmp.mesh <- atlas
+synd.mshape <- d.registered$mshape
+PC.eigenvectors <- d.registered$PCs[,1:200]
+d.meta.combined$Sex <- as.numeric(d.meta.combined$Sex == "F")
+d.meta.combined$Syndrome <- factor(d.meta.combined$Syndrome, levels = unique(d.meta.combined$Syndrome))
+
+num_pcs <- 200
+meta.lm <- lm(d.registered$PCscores[,1:num_pcs] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)
+synd.lm.coefs <- meta.lm$coefficients
+
+
+predshape.lm <- function(fit, datamod, PC, mshape){
+  dims <- dim(mshape)
+  mat <- model.matrix(datamod)
+  pred <- mat %*% fit
+  
+  predPC <- (PC %*% t(pred))
+  out <- mshape + matrix(predPC, dims[1], dims[2], byrow = F)
+  
+  return(out * 1e10)
+}
 
 ui <- (fluidPage(
   selectInput("synd", label = "Syndrome", choices = sort(levels(d.meta.combined$Syndrome)), selected = "Achondroplasia"),
@@ -78,11 +100,14 @@ server <- function(input, output, session) {
   if(input$severity == "mild"){selected.severity <- -2 * sd(syndscores.main)} else if(input$severity == "severe"){selected.severity <- 2 * sd(syndscores.main)} else if(input$severity == "typical"){selected.severity <- 0}
 
   values <- matrix(NA, ncol = nrow(xyz) * 3, nrow = length(minage:nframes))
-
+values.sev <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 10)
+  
   for(i in 1:nrow(values)){
     selected.synd <- factor(input$synd, levels = levels(d.meta.combined$Syndrome))
     selected.age <- i
 
+    main.res <- matrix(t(d.registered$PCs[,1:num_pcs] %*% t(selected.severity * Snorm)), dim(d.registered$mshape)[1], dim(d.registered$mshape)[2])
+    # selected.severity <- "mild"
     main.res <- matrix(t(d.registered$PCs[,1:num_pcs] %*% t(selected.severity * Snorm)), dim(d.registered$mshape)[1], dim(d.registered$mshape)[2])
     
     datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd

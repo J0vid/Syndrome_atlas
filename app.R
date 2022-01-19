@@ -13,7 +13,6 @@ library(shinyBS)
 library(grid)
 library(sparsediscrim)
 
-# meta.lm, d.registered
 setwd("~/shiny/shinyapps/Syndrome_model/")
 #setwd("/data/Syndrome_model_data/")
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
@@ -24,15 +23,6 @@ setwd("~/shiny/shinyapps/Syndrome_model/")
  hdrda.df <- data.frame(synd = d.meta.combined$Syndrome, PC.scores[,1:200])
  hdrda.mod <- hdrda(synd ~ ., data = hdrda.df)
  
- synd.means <- matrix(NA, nrow = length(unique(d.meta.combined$Syndrome)), ncol = 200)
- for(i in 1:nrow(synd.means)) synd.means[i,] <- colMeans(PC.scores[d.meta.combined$Syndrome == levels(d.meta.combined$Syndrome)[i], 1:200])
- 
-
- # eye.index <- as.numeric(read.csv("~/shiny/shinyapps/Syndrome_model/lm_indices/eye_small.csv", header = F)) +1#as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
-
-# eye.index <- as.numeric(read.csv("~/Desktop/eye_lms.csv", header = F)) +1
-
- # load("~/shiny/shinyapps/Syndrome_model/FB2_texture_PCA.Rdata")
  
  predshape.lm <- function(fit, datamod, PC, mshape){
    dims <- dim(mshape)
@@ -43,17 +33,6 @@ setwd("~/shiny/shinyapps/Syndrome_model/")
    out <- mshape + matrix(predPC, dims[1], dims[2], byrow = F)
    
    return(out * 1e10)
- }
- 
- predtexture.lm <- function(fit, datamod, PC, mshape){
-   dims <- dim(mshape)
-   mat <- model.matrix(datamod)
-   pred <- mat %*% fit
-   
-   predPC <- t(PC %*% t(pred))
-   out <- mshape + predPC
-
-   return(out)
  }
  
 ui <- fluidPage(
@@ -88,8 +67,6 @@ ui <- fluidPage(
                       selectInput("comp_sex", label = "Sex", choices = c("Female", "Male")),
                       selectInput("comp_severity", label = "Severity", choices = c("Mild", "Typical", "Severe"), selected = "Typical"),
                       playwidgetOutput("control_comp"),
-                      # sliderInput("transparency", label = "Mesh transparency", min = 0, max = 1, step = .1, value = 1),
-                      # checkboxInput("displace", label = "Plot vectors?", value = F),
                       hr(),
                       bsButton("q1", label = "", icon = icon("question"), style = "default", size = "extra-small"),
                       selectInput("score_plot", label = "Plot type", choices = c("Similarity", "Raw score")),
@@ -145,9 +122,6 @@ ui <- fluidPage(
                  shinydashboard::box(plotlyOutput("personal_morphospace"), width = 6)
                  )),
         tabPanel("About", br(), HTML("<p style=\"color:black;\">This app aims to help clinical geneticists better understand the characteristic craniofacial features of various genetic syndromes. There are 3 sections to this app and here is my description of how they work. Here are the people that made this app possible.</p>"))#, 
-        #includeHTML("~/shiny/shinyapps/Syndrome_gestalts/about_test.html"), 
-        #includeCSS("~/shiny/shinyapps/Syndrome_gestalts/test.css"))
-        
       )
     )
   )
@@ -174,7 +148,7 @@ server <- function(input, output, session) {
   tmp.mesh <- atlas
   
   open3d()
-  shinySetPar3d(userMatrix = front.face2, session = session)
+  # shinySetPar3d(userMatrix = front.face2, session = session)
   par3d(userMatrix = front.face2)
   shade3d(vcgSmooth(atlas), aspect = "iso", col = "lightgrey", specular = 1)
   objid <- ids3d()$id

@@ -23,24 +23,20 @@ setwd("~/shiny/shinyapps/Syndrome_model/")
 
  #load 30K dataset
  # load("~/Downloads/Segmented_PLS/30k.Rdata")
- load("~/Downloads/Dense_combined_starter_PC_outliers_duplicates_removed.Rdata")
+ # load("~/Downloads/Dense_combined_starter_PC_outliers_duplicates_removed.Rdata")
 
 
  predshape.lm <- function(fit, datamod, PC, mshape){
    dims <- dim(mshape)
    mat <- model.matrix(datamod)
    pred <- mat %*% fit
-   names <- as.matrix(model.frame(datamod))
-   names <- apply(names, 1, paste, collapse = "_")
-   names <- gsub(" ", "", names)
+
    predPC <- t(PC %*% t(pred))
    out <- mshape + matrix(predPC, dims[1], dims[2])
-   # dimnames(out)[[3]] <- names
-   # rownames(pred) <- names
+
    return(out)
  }
 
- atlas <- file2mesh("whoami.ply", readcol = T)
   pred.mesh <- atlas 
   pred.mesh2 <- atlas
   
@@ -101,6 +97,23 @@ clear3d()
 
 
 ```
+
+```{r table for all age ranges}
+
+d.meta.combined
+
+synddemographics.df <- data.frame(Syndrome = d.meta.combined$Syndrome, age = d.meta.combined$Age, sex = d.meta.combined$Sex)
+    
+demographics <- synddemographics.df %>%
+      group_by(Syndrome) %>%
+      summarise(min_age = min(age), max_age = max(age), median_age = median(age), synd_n = length(age), female_n = sum(sex == "F"), male_n = sum(sex == "M"))
+
+View(demographics)
+
+write.table(demographics, "demographics.txt", row.names = F, sep = ",")
+
+```
+
 
 
 ```{r get predicted shape}
@@ -491,6 +504,18 @@ actual.mesh$vb[-4,] <-  t(matched.face)
 model.resid[i] <- sum(sqrt((test2$mesh$vb[-4,] - test$mesh$vb[-4,])^2))/ncol(test$mesh$vb)
 
 }
+
+df <- data.frame(resids = model.resid, age = d.meta.combined$Age[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]], Sex = d.meta.combined$Sex[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]])
+
+pdf(paste0("~/Desktop/mod_images/", gsub("/", "_", unique(d.meta.combined$Syndrome)[j]), "_resids.pdf"), width = 5, height = 3)
+x <- ggplot(df, aes(x = age, y = resids, color = Sex)) + 
+  geom_point() +
+  geom_smooth(method = "lm", alpha = .15, aes(fill = Sex)) + 
+  xlab("Age") +
+  ylab("Average residual (mm)")
+print(x)
+dev.off()
+
 best_worst_resids[j,] <- c(which.min(model.resid), which.max(model.resid))
 print(j)
 }
@@ -685,117 +710,183 @@ sum(is.matched)/2748
 
 ```
 
+```{r validate model estimation with knn}
 
-```{r classifying the predicted values}
+predPC.lm <- function(fit, datamod){
+  mat <- model.matrix(datamod)
+  pred <- mat %*% fit
+  
+  return(pred)
+}
 
-twod.lms <- array2row3d()
+#make knn model with 200 pcs
+library(class)
+library(sparsediscrim)
 
- selected.age <- d.meta.combined$Age[i]
+# let's do knn with only means to mitigate class imbalance. k will have to be 1
+synd.means <- matrix(NA, nrow = length(unique(d.meta.combined$Syndrome)), ncol = 200)
+for(i in 1:nrow(synd.means)) synd.means[i,] <- colMeans(PC.scores[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[i], 1:200])
+
+#notes from Peter####
+# Given an individual of syndrome A, age X and Sex Y, -> predict an archetype for this individual of syndrome A, age X and sex Y
+#Also predict archetypes for all the other syndromes with the same X and Y.
+#Get distance of your individual to all archetypes, and assign closest archetype for classifying syndrome for individual
+hdrda.df <- data.frame(synd = d.meta.combined$Syndrome, PC.scores[,1:200])
+hdrda.mod <- hdrda(synd ~ ., data = hdrda.df)
+
+closest.synd <- matrix(NA, nrow = nrow(d.meta.combined), ncol = length(unique(d.meta.combined$Syndrome)))
+hdrda.pred <- matrix(NA, nrow = nrow(d.meta.combined), ncol = length(unique(d.meta.combined$Syndrome)))
+hdrda.class <- rep(NA, nrow = nrow(d.meta.combined))
+
+for(i in 1:length(d.meta.combined$Syndrome)){
+    selected.age <- d.meta.combined$Age[i]
     selected.sex <- if(d.meta.combined$Sex[i] == "M"){ 1} else {2} 
-    selected.synd <- factor(d.meta.combined$Syndrome[i], levels = levels(d.meta.combined$Syndrome))
-    matched.face <- d.lms.combined[,,i]
-    
-    actual.mesh <- pred.mesh
-    actual.mesh$vb[-4,] <-  t(matched.face)
-    
-    
+  
     datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd +      selected.age:selected.synd
+ selected.synd <- factor(d.meta.combined$Syndrome[i], levels = levels(d.meta.combined$Syndrome))
+    predicted.shape <- predPC.lm(synd.lm.coefs[,1:200], datamod)
     
+    tmp.diffs <- rep(NA, ncol(closest.synd))
+    for(j in 1:ncol(closest.synd)) tmp.diffs[j] <- sum(sqrt((synd.means[j,] - predicted.shape)^2))
     
-    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    closest.synd[i, ] <- as.character(unique(d.meta.combined$Syndrome))[sort(tmp.diffs, index.return = T)$ix]
+    
+   # closest.synd[i] <-  as.character(knn(synd.means, as.matrix(predicted.shape), unique(d.meta.combined$Syndrome), k = 1))
+    tmp.pred <- predict(hdrda.mod, predicted.shape)
+    hdrda.pred[i,] <- tmp.pred$post
+    hdrda.class[i] <- as.character(tmp.pred$class)
+    print(i)
+    # print(paste0("predicted synd: ", closest.synd[i], " real synd: ", d.meta.combined$Syndrome[i]))
+}
 
-    sparsediscrim::hdrda()
+is.matched <- rep(NA, nrow(closest.synd))
+for(i in 1:nrow(closest.synd)) is.matched[i] <- closest.synd[i,1] == d.meta.combined$Syndrome[i]
+
+sum(is.matched)/2748
+library(caret)
+hdrda.class <- factor(hdrda.class, levels(d.meta.combined$Syndrome))
+
+View(confusionMatrix(hdrda.class, d.meta.combined$Syndrome)$byClass)
+
+View(data.frame(actual = d.meta.combined$Syndrome, closest.synd))
+
+# You can repeat this closest archetype based syndrome classifications, where each archetype is simply the group mean, so without taking age and sex into account. The prognosis is that this should perform worse than your model based predicted archetypes taking sex and age into account. Accounting for age and sex is one of the key strengths of your model
+
+
+
+```
+
+```{r which direction is severe?}
+
+j = 1
+  S <- matrix(synd.lm.coefs[grepl(pattern = unique(d.meta.combined$Syndrome)[j], rownames(synd.lm.coefs)),], nrow = 1, ncol = ncol(PC.eigenvectors))
+  Snorm <- S/sqrt(sum(S^2))
+  
+  syndscores.main <- (PC.scores) %*% t(Snorm)
+   
+   plot(syndscores.main ~ PC.scores[,1])
+
+    points(syndscores.main[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]] ~ PC.scores[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j],1], col = "red")
+
+     selected.severity <- -1.5 * sd(syndscores.main[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]])
+  
+  main.res <- matrix((selected.severity * Snorm)[1:200], nrow = 1, ncol = 200)
+  points(selected.severity ~ main.res[1], pch = 19, col = 3)
 
 ```
 
 
+```{r classifying interpolated values}
 
 
+hdrda.df <- data.frame(synd = d.meta.combined$Syndrome, PC.scores[,1:200])
+hdrda.mod <- hdrda(synd ~ ., data = hdrda.df)
 
 
+interpolated.hdrda.pred <- NULL
+interpolated.hdrda.class <- NULL
+class.labels <- NULL
+for(j in 1:length(unique(d.meta.combined$Syndrome))){
+  #what's the age range
+  age.range <- min(d.meta.combined$Age[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]]):max(d.meta.combined$Age[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]])
+  
+    S <- matrix(synd.lm.coefs[grepl(pattern = unique(d.meta.combined$Syndrome)[j], rownames(synd.lm.coefs)),], nrow = 1, ncol = ncol(PC.eigenvectors))
+  Snorm <- S/sqrt(sum(S^2))
+  
+  syndscores.main <- (PC.scores) %*% t(Snorm)
+    
+  #which direction is more severe?
+  #get range 
+  # syndscores.synd <- syndscores.main[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]]
+  # severity.direction <- which.max(abs(range(syndscores.synd)))
+  # pos.or.neg <- if(severity.direction == 1){-1.5} else{1.5}
+  pos.or.neg <- if(S[1,1] < 0){-1.5} else{1.5}
+  selected.severity <- pos.or.neg * sd(syndscores.main[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]])
+  
+  main.res <- matrix((selected.severity * Snorm)[1:200], nrow = 1, ncol = 200)
+  
+for(i in age.range){
+    selected.age <- i
+    selected.sex <- 0 #CHANGE SEX HERE INSTEAD OF DUPLICATING CODE
+  
+    datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd +      selected.age:selected.synd
+ selected.synd <- factor(unique(d.meta.combined$Syndrome)[j], levels = levels(d.meta.combined$Syndrome))
+    predicted.shape <- predPC.lm(synd.lm.coefs[,1:200], datamod) # + main.res #ADDING SEVERITY HERE
+    
+    tmp.pred <- predict(hdrda.mod, predicted.shape)
+    interpolated.hdrda.pred <- rbind(interpolated.hdrda.pred, tmp.pred$post)
+    interpolated.hdrda.class <- c(interpolated.hdrda.class, as.character(tmp.pred$class))
+    class.labels <- c(class.labels, as.character(unique(d.meta.combined$Syndrome)[j]))
+    
+}
+  print(j)
+    }
 
-```{r compare gestalt classification vs real classification}
+library(caret)
+interpolated.hdrda.class <- factor(interpolated.hdrda.class, levels(d.meta.combined$Syndrome))
+class.labels <- factor(class.labels, levels(d.meta.combined$Syndrome))
 
-#take original data (claes lab 65 lm set?), fit hdrda
-#since we have dense meshes, let's get 200 PCs and fit the model there
-#do I have the landmark index for the 30K mesh? NO
-
-
-
-#Does hdrda classify age-matched syndrome model estimates better than real data?
-
-#for each ind, remove ind, fit model. Classify loo obs as well as synthetic version
+cmat <- confusionMatrix(interpolated.hdrda.class, class.labels)
+View(cmat$byClass)
+View(cmat$table)
 
 
-filtered.lms$Syndrome <- make.names(filtered.lms$Syndrome)
+```
 
-#remove unaffected from families
-families_synd <- families[filtered.lms$Syndrome != "Unrelated.Unaffected"]
 
-filtered.lms2 <- filtered.lms[filtered.lms[,1] != "Unrelated.Unaffected",]
-filtered.lms2[,1] <- as.character(filtered.lms2[,1])
-filtered.lms2[,-1] <- two.d.array(gpagen(arrayspecs(filtered.lms2[,-1], 65, 3))$coords)
-filtered.lms2 <- na.omit(filtered.lms2)
+```{r plot gestalt classification}
 
-family.synd.folds <- groupKFold(families_synd, k = length(unique(families_synd)))
-
-hdrdaGrid <-  expand.grid(lambda = 1, gamma = 0, shrinkage_type = "ridge")
-
-hdrda.noc.Control <- trainControl(method="cv", classProbs = T, index = family.synd.folds)
-
-filtered.lms$Syndrome <- as.factor(filtered.lms$Syndrome)
-
-no_c_hdrda <- caret::train(Syndrome ~ ., data = filtered.lms2, method = "hdrda", trControl = hdrda.noc.Control, tuneGrid = hdrdaGrid)
-
-#save model: save(hdrda.cva, file = "hdrda_model_no_controls.Rdata")
-save(filtered.lms, no_c_hdrda, file = "/mnt/Hallgrimsson/Users/Jovid/FB2_ML/hdrda_model_nov2019_famgroups_no_c.Rdata")
-
-load("/mnt/Hallgrimsson/Users/Jovid/FB2_ML/hdrda_model_nov2019_famgroups_no_c.Rdata")
-
-no.c.hdrda.pred <- predict(no_c_hdrda, newdata = filtered.lms2[,-1])
-
-View(confusionMatrix(no.c.hdrda.pred, as.factor(filtered.lms2$Syndrome))$byClass)
-
-model.stack <- predict(no_c_hdrda, filtered.lms2)
-  model.probs <- predict(no_c_hdrda, filtered.lms2, type = "prob")
-  top1sens <- confusionMatrix(model.stack, as.factor(filtered.lms2$Syndrome))$byClass[,1]
-  top1acc <- confusionMatrix(model.stack, as.factor(filtered.lms2$Syndrome))$byClass[,11]
+model.stack <- interpolated.hdrda.class
+  model.probs <- interpolated.hdrda.pred
+  top1sens <- confusionMatrix(interpolated.hdrda.class, class.labels)$byClass[,1]
+  top1acc <- confusionMatrix(interpolated.hdrda.class, class.labels)$byClass[,11]
 
   rank2 = 3
   rank3 = 10
 
-top5.check <- rep(NA, length(filtered.lms2$Syndrome))
+top5.check <- rep(NA, length(class.labels))
 
-for(i in 1: length(filtered.lms2$Syndrome)){
-if(sum(names(sort(model.probs[i,], decreasing = T)[1:rank2]) == filtered.lms2$Syndrome[i]) > 0){
-  top5.check[i] <- as.character(filtered.lms2$Syndrome[i])
+for(i in 1: length(class.labels)){
+if(sum(names(sort(model.probs[i,], decreasing = T)[1:rank2]) == class.labels[i]) > 0){
+  top5.check[i] <- as.character(class.labels[i])
 } else{top5.check[i] <- names(sort(model.probs[i,], decreasing = T)[1])}
 }
 
 #top 10
-top10.check <- rep(NA, length(filtered.lms2$Syndrome))
+top10.check <- rep(NA, length(class.labels))
 
-for(i in 1: length(filtered.lms2$Syndrome)){
-if(sum(names(sort(model.probs[i,], decreasing = T)[1:rank3]) == filtered.lms2$Syndrome[i]) > 0){
-  top10.check[i] <- as.character(filtered.lms2$Syndrome[i])
+for(i in 1: length(class.labels)){
+if(sum(names(sort(model.probs[i,], decreasing = T)[1:rank3]) == class.labels[i]) > 0){
+  top10.check[i] <- as.character(class.labels[i])
 } else{top10.check[i] <- names(sort(model.probs[i,], decreasing = T)[1])}
 }
 
 
-top5sens <- confusionMatrix(as.factor(top5.check), as.factor(filtered.lms2$Syndrome))$byClass[,1]
-top10sens <- confusionMatrix(as.factor(top10.check), as.factor(filtered.lms2$Syndrome))$byClass[,1]
+top5sens <- confusionMatrix(as.factor(top5.check), as.factor(class.labels))$byClass[,1]
+top10sens <- confusionMatrix(as.factor(top10.check), as.factor(class.labels))$byClass[,1]
 
-top5acc <- confusionMatrix(as.factor(top5.check), as.factor(filtered.lms2$Syndrome))$byClass[,11]
-top10acc <- confusionMatrix(as.factor(top10.check), as.factor(filtered.lms2$Syndrome))$byClass[,11]
-
-
-
-
-
-
-
-
-
+top5acc <- confusionMatrix(as.factor(top5.check), as.factor(class.labels))$byClass[,11]
+top10acc <- confusionMatrix(as.factor(top10.check), as.factor(class.labels))$byClass[,11]
 
 
 ```
@@ -818,15 +909,16 @@ model.rank.sens[,3] <- as.factor(model.rank.sens[,3])
 model.rank.sens[,1] <- factor(model.rank.sens[,1], levels = yy[,1])
 colnames(model.rank.sens)[2:3] <- c("sensuracy", "rank")
 model.rank.sens$syndrome <- gsub("X", "", as.character(model.rank.sens$syndrome))
-model.rank.sens$syndrome[model.rank.sens$syndrome == ".Linked.Hypohidrotic.Ectodermal"] <- "XHLED"
+model.rank.sens$syndrome[model.rank.sens$syndrome == "-Linked Hypohidrotic Ectodermal Dysplasia"] <- "XHLED"
 model.rank.sens$syndrome[model.rank.sens$syndrome == "Fragile."] <- "Fragile.X"
 model.rank.sens$syndrome[model.rank.sens$syndrome == "YY"] <- "XXYY"
+model.rank.sens$syndrome[model.rank.sens$syndrome == ""] <- "XXX"
 model.rank.sens$syndrome[model.rank.sens$syndrome == "22q.11.2.Del"] <- "22q11_2.Del"
 model.rank.sens$syndrome[model.rank.sens$syndrome == "Osteogenesis.Imperfecta"] <- "OIM"
 model.rank.sens$syndrome[model.rank.sens$syndrome == "Rhizomelic.Chondro.Punctata"] <- "Rhizo Chondro Punct"
 fill <- c("#0F084B", "#3D60A7", "#A0D2E7")
 
- pdf(file = "/mnt/Hallgrimsson/Users/Jovid/FB2_ML/figures/sorted_LOFOCV_HDRDA_sensitivity_n10_no_controls.pdf", width = 10, height = 5*.65)
+ pdf(file = "~/Downloads/sorted__HDRDA_sensitivity_n5_syndrome_atlas_Males.pdf", width = 10, height = 5*1.05)
 #png(filename = "/mnt/Hallgrimsson/Users/Jovid/FB2_ML/reveal_presentation/images/LOOCV_HDRDA_sensitivity.png", width = 2000, height = 1000)
 ggplot() + 
   geom_bar(aes(y = sensuracy, x = id, fill = rank), data = model.rank.sens, stat="identity",  position = position_stack(reverse = T))  + 
@@ -836,7 +928,7 @@ ggplot() +
   scale_x_discrete(labels = gsub("\\.", " ", model.rank.sens$syndrome)) +
   scale_fill_manual("Rank", values=fill, labels = c("Top choice", "Within top 3", "Within top 10")) +
   theme_bw() +
-   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5, size = 9.5),
+   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5, size = 8.5),
         plot.background = element_rect(fill = "transparent"),
         legend.position = "none")
   #theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5, size = 24.5), axis.title=element_text(size=27,face="bold"), legend.title=element_text(size=25, face="bold"), legend.text=element_text(size=25), legend.key.size =  unit(0.4, "in")) 
@@ -844,5 +936,163 @@ ggplot() +
 dev.off()
 ```
 
+```{r determinants of sensitivity}
+
+#sample size
+pdf("~/Downloads/N.pdf", width = 5, height = 3)
+plot(top1sens ~ as.numeric(table(d.meta.combined$Syndrome)), pch = 19, col = "#0F084B", xlab = "Sample size", ylab = "Sensitivity")
+dev.off()
+
+#by syndrome trace, variance of eigenvalues, covariance distance from control, pdist from control
+syndwithscores <- data.frame(Syndrome = d.meta.combined$Syndrome, PC.scores) 
+varcomps <- matrix(NA, nrow = length(unique(d.meta.combined$Syndrome)), ncol = 4)
+
+for(i in 1: nrow(varcomps)){
+  tmp.pc <- PC.scores[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[i],]
+  varcomps[i,1] <- sum(diag(cov(tmp.pc)))
+  varcomps[i,2] <- var(prcomp(tmp.pc)$sdev)/mean(var(prcomp(tmp.pc)$sdev))
+  varcomps[i,3] <- mean(Jovid::procdist(tmp.pc, colMeans(PC.scores[d.meta.combined$Syndrome == "Unaffected Unrelated",])))
+  # varcomps[i,4] <- covDist(cov(PC.scores[d.meta.combined$Syndrome == "Unaffected Unrelated",]), cov(tmp.pc))
+}
+  
+pdf("~/Downloads/trace.pdf", width = 5, height = 3)
+plot(top1sens ~ varcomps[,1], pch = 19, col = "#0F084B", xlab = "Trace", ylab = "Sensitivity")
+dev.off()
+
+pdf("~/Downloads/SVE.pdf", width = 5, height = 3)
+plot(top1sens ~ varcomps[,2], pch = 19, col = "#0F084B", xlab = "Standardized variance of the eigenvalues", ylab = "Sensitivity")
+dev.off()
+
+pdf("~/Downloads/pdist.pdf", width = 5, height = 3)
+  plot(top1sens ~ varcomps[,3], pch = 19, col = "#0F084B", xlab = "Mean procrustes distance", ylab = "Sensitivity")
+dev.off()
+
+```
 
 
+```{r classifying extrapolated values}
+
+
+hdrda.df <- data.frame(synd = d.meta.combined$Syndrome, PC.scores[,1:200])
+hdrda.mod <- hdrda(synd ~ ., data = hdrda.df)
+
+
+extrapolated.hdrda.pred <- NULL
+extrapolated.hdrda.class <- NULL
+class.labels <- NULL
+for(j in 1:length(unique(d.meta.combined$Syndrome))){
+  #what's the age range
+  age.range <- min(d.meta.combined$Age[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]]):max(d.meta.combined$Age[d.meta.combined$Syndrome == unique(d.meta.combined$Syndrome)[j]])
+  
+  ex.range <- c(1:60)[1:60 %in% round(age.range)== F]
+  
+for(i in ex.range){
+    selected.age <- i
+    selected.sex <- 0 #CHANGE SEX HERE INSTEAD OF DUPLICATING CODE
+  
+    datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd +      selected.age:selected.synd
+ selected.synd <- factor(unique(d.meta.combined$Syndrome)[j], levels = levels(d.meta.combined$Syndrome))
+    predicted.shape <- predPC.lm(synd.lm.coefs[,1:200], datamod) # + main.res #ADDING SEVERITY HERE
+    
+    tmp.pred <- predict(hdrda.mod, predicted.shape)
+    extrapolated.hdrda.pred <- rbind(extrapolated.hdrda.pred, tmp.pred$post)
+    extrapolated.hdrda.class <- c(extrapolated.hdrda.class, as.character(tmp.pred$class))
+    class.labels <- c(class.labels, as.character(unique(d.meta.combined$Syndrome)[j]))
+    
+}
+  print(j)
+    }
+
+library(caret)
+extrapolated.hdrda.class <- factor(extrapolated.hdrda.class, levels(d.meta.combined$Syndrome))
+class.labels <- factor(class.labels, levels(d.meta.combined$Syndrome))
+
+cmat <- confusionMatrix(extrapolated.hdrda.class, class.labels)
+View(cmat$byClass)
+View(cmat$table)
+
+
+```
+
+
+```{r plot gestalt classification - exdata}
+
+model.stack <- extrapolated.hdrda.class
+  model.probs <- extrapolated.hdrda.pred
+  top1sens <- confusionMatrix(extrapolated.hdrda.class, class.labels)$byClass[,1]
+  top1acc <- confusionMatrix(extrapolated.hdrda.class, class.labels)$byClass[,11]
+
+  rank2 = 3
+  rank3 = 10
+
+top5.check <- rep(NA, length(class.labels))
+
+for(i in 1: length(class.labels)){
+if(sum(names(sort(model.probs[i,], decreasing = T)[1:rank2]) == class.labels[i]) > 0){
+  top5.check[i] <- as.character(class.labels[i])
+} else{top5.check[i] <- names(sort(model.probs[i,], decreasing = T)[1])}
+}
+
+#top 10
+top10.check <- rep(NA, length(class.labels))
+
+for(i in 1: length(class.labels)){
+if(sum(names(sort(model.probs[i,], decreasing = T)[1:rank3]) == class.labels[i]) > 0){
+  top10.check[i] <- as.character(class.labels[i])
+} else{top10.check[i] <- names(sort(model.probs[i,], decreasing = T)[1])}
+}
+
+
+top5sens <- confusionMatrix(as.factor(top5.check), as.factor(class.labels))$byClass[,1]
+top10sens <- confusionMatrix(as.factor(top10.check), as.factor(class.labels))$byClass[,1]
+
+top5acc <- confusionMatrix(as.factor(top5.check), as.factor(class.labels))$byClass[,11]
+top10acc <- confusionMatrix(as.factor(top10.check), as.factor(class.labels))$byClass[,11]
+
+
+```
+
+
+
+```{r ranked sensitivity graph - exdata}
+zz <- cbind(top1sens, top5sens - top1sens, top10sens - top5sens)  
+yy <- zz[order(zz[,1], decreasing = T),]          # order by bb
+yy <- cbind(id=1:nrow(yy),syndrome=substr(row.names(yy), start = 8, stop = 150L),yy)    # add an id column; will need later
+
+#remelt the dataframe
+model.rank.sens <- rbind(cbind(as.numeric(yy[,3]), 1),
+      cbind(as.numeric(yy[,4]), rank2),
+      cbind(as.numeric(yy[,5]), rank3)
+)
+
+model.rank.sens <- data.frame(id = rep(yy[,1],3), model.rank.sens, syndrome = as.factor(yy[,2]))
+model.rank.sens[,3] <- as.factor(model.rank.sens[,3])
+model.rank.sens[,1] <- factor(model.rank.sens[,1], levels = yy[,1])
+colnames(model.rank.sens)[2:3] <- c("sensuracy", "rank")
+model.rank.sens$syndrome <- gsub("X", "", as.character(model.rank.sens$syndrome))
+model.rank.sens$syndrome[model.rank.sens$syndrome == "-Linked Hypohidrotic Ectodermal Dysplasia"] <- "XHLED"
+model.rank.sens$syndrome[model.rank.sens$syndrome == "Fragile."] <- "Fragile.X"
+model.rank.sens$syndrome[model.rank.sens$syndrome == "YY"] <- "XXYY"
+model.rank.sens$syndrome[model.rank.sens$syndrome == ""] <- "XXX"
+model.rank.sens$syndrome[model.rank.sens$syndrome == "22q.11.2.Del"] <- "22q11_2.Del"
+model.rank.sens$syndrome[model.rank.sens$syndrome == "Osteogenesis.Imperfecta"] <- "OIM"
+model.rank.sens$syndrome[model.rank.sens$syndrome == "Rhizomelic.Chondro.Punctata"] <- "Rhizo Chondro Punct"
+fill <- c("#0F084B", "#3D60A7", "#A0D2E7")
+
+ pdf(file = "~/Downloads/sorted__HDRDA_sensitivity_n5_syndrome_atlasextrapolated.pdf", width = 10, height = 5*1.05)
+#png(filename = "/mnt/Hallgrimsson/Users/Jovid/FB2_ML/reveal_presentation/images/LOOCV_HDRDA_sensitivity.png", width = 2000, height = 1000)
+ggplot() + 
+  geom_bar(aes(y = sensuracy, x = id, fill = rank), data = model.rank.sens, stat="identity",  position = position_stack(reverse = T))  + 
+  #geom_hline(yintercept = .7, color = 2) + 
+  xlab("Syndrome") + 
+  ylab("Sensitivity") + 
+  scale_x_discrete(labels = gsub("\\.", " ", model.rank.sens$syndrome)) +
+  scale_fill_manual("Rank", values=fill, labels = c("Top choice", "Within top 3", "Within top 10")) +
+  theme_bw() +
+   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5, size = 8.5),
+        plot.background = element_rect(fill = "transparent"),
+        legend.position = "none")
+  #theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5, size = 24.5), axis.title=element_text(size=27,face="bold"), legend.title=element_text(size=25, face="bold"), legend.text=element_text(size=25), legend.key.size =  unit(0.4, "in")) 
+ 
+dev.off()
+```
