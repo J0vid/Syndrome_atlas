@@ -10,8 +10,8 @@ future::plan("multicore")
 setwd("~/shiny/shinyapps/Syndrome_model/")
 # setwd("/data/Syndrome_model_data/")
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
-# load("data.Rdata")
-load("data_sparse.Rdata")
+load("data.Rdata")
+# load("data_sparse.Rdata")
 xyz.num <- 11628 #sparse
 xyz.num <- 166131 #dense
 load("modules_400PCs.Rdata")
@@ -25,26 +25,26 @@ texture.mean <- texture.pca$center
 tmp.mesh <- atlas
 # synd.mshape <- d.registered$mshape
 
-# d.meta.combined$Sex <- as.numeric(d.meta.combined$Sex == "F")
-# d.meta.combined$Syndrome <- factor(d.meta.combined$Syndrome, levels = unique(d.meta.combined$Syndrome))
-# 
-# num_pcs <- 200
-# PC.eigenvectors <- PC.eigenvectors[,1:num_pcs]
-# PC.scores <- PC.scores[,1:num_pcs]
-# meta.lm <- lm(PC.scores[,1:num_pcs] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)
-# synd.lm.coefs <- meta.lm$coefficients
-# 
-# 
-# predshape.lm <- function(fit, datamod, PC, mshape){
-#   dims <- dim(mshape)
-#   mat <- model.matrix(datamod)
-#   pred <- mat %*% fit
-# 
-#   predPC <- (PC %*% t(pred))
-#   out <- mshape + matrix(predPC, dims[1], dims[2], byrow = F)
-# 
-#   return(out * 1e10)
-# }
+d.meta.combined$Sex <- as.numeric(d.meta.combined$Sex == "F")
+d.meta.combined$Syndrome <- factor(d.meta.combined$Syndrome, levels = unique(d.meta.combined$Syndrome))
+
+num_pcs <- 200
+PC.eigenvectors <- PC.eigenvectors[,1:num_pcs]
+PC.scores <- PC.scores[,1:num_pcs]
+meta.lm <- lm(PC.scores[,1:num_pcs] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)
+synd.lm.coefs <- meta.lm$coefficients
+
+
+predshape.lm <- function(fit, datamod, PC, mshape){
+  dims <- dim(mshape)
+  mat <- model.matrix(datamod)
+  pred <- mat %*% fit
+
+  predPC <- (PC %*% t(pred))
+  out <- mshape + matrix(predPC, dims[1], dims[2], byrow = F)
+
+  return(out * 1e10)
+}
 
 predPC.lm <- function(fit, datamod){
   mat <- model.matrix(datamod)
