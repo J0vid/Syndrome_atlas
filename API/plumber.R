@@ -80,7 +80,6 @@ predtexture.lm <- function(fit, datamod, PC, mshape, gestalt_combo = NULL){
 
 #* @apiTitle Syndrome model API
 
-
 #* generate atlas prediction for Shiny app
 #* @param selected.sex predicted sex effect
 #* @param selected.synd predicted syndrome effect
@@ -108,68 +107,7 @@ function(selected.sex = "Female", min.age = 1, max.age = 20, selected.synd = "Ac
   
 }
 
-#* comparison plot
-#* @param comp_age age for syndrome comparison
-#* @param comp_sex sex for syndrome comparison
-#* @param reference reference syndrome
-#* @param synd_comp compared syndrome
-#* @param facial_subset what part of the face to analyze
-#* @get /synd_comp
-#pick two synds, construct mesh estimates, get subsets, register mesh subsets, project and score
-function(comp_age = 12, comp_sex = "Female", reference = "Unaffected Unrelated", synd_comp = "Costello Syndrome", facial_subset = ""){
-
-  #synd
-  selected.synd <- factor(synd_comp, levels = levels(d.meta.combined$Syndrome))
-  if(comp_sex == "Female"){selected.sex <-1
-  } else if(comp_sex == "Male"){selected.sex <- 0} 
-  selected.age <- as.numeric(comp_age)
-  
-  future({
-  datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
-  synd.pred <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
-  
-  #ref
-  selected.synd <- factor(reference, levels = levels(d.meta.combined$Syndrome))
-  datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
-  ref.pred <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape) 
-  
-  #calculate syndrome severity scores for selected syndrome
-  #calculate score for the whole face
-  S <- synd.lm.coefs[grepl(pattern = synd_comp, rownames(synd.lm.coefs)),][1,]
-  Snorm <- S/sqrt(sum(S^2))
-  syndscores.main <- PC.scores %*% Snorm
-  
-  syndscores.df <- data.frame(Syndrome = d.meta.combined$Syndrome, face.score = syndscores.main)
-  syndscores.wholeface <- syndscores.df%>%
-    group_by(Syndrome) %>%
-    summarise(face_score = mean(face.score))
-  
-  # calculate score for the selected subregion
-  if(is.null(facial_subset)) selected.node <- 1 else if(facial_subset == ""){
-    selected.node <- 1} else{
-      selected.node <- as.numeric(facial_subset)}
-  
-  if(selected.node > 1){
-    subregion.coefs <- manova(get(paste0(tolower(colnames(modules)[selected.node]), ".pca"))$x ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
-    S <- subregion.coefs[grepl(pattern = synd_comp, rownames(subregion.coefs)),][1,]
-    print(rownames(subregion.coefs)[grepl(pattern = synd_comp, rownames(subregion.coefs))])
-    Snorm <- S/sqrt(sum(S^2))
-    syndscores.main <- get(paste0(tolower(colnames(modules)[selected.node]), ".pca"))$x %*% Snorm
-    
-    syndscores.df <- data.frame(Syndrome = d.meta.combined$Syndrome, module.score = syndscores.main)
-    syndscores.module <- syndscores.df%>%
-      group_by(Syndrome) %>%
-      summarise(face_score = mean(module.score))
-  } else{syndscores.module <- syndscores.wholeface}
-  
-  list(reference_pred = ref.pred, syndrome_pred = synd.pred, wholeface_scores = syndscores.wholeface, subregion_scores = syndscores.module)
-  
-  }) #end future
-  
-  
-}
-
-#* comparison plot
+#* comparison morphtarget
 #* @param comp_age age for syndrome comparison
 #* @param comp_sex sex for syndrome comparison
 #* @param reference reference syndrome
@@ -235,7 +173,6 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_c
   
   
 }
-
 
 #* get similarity scores for whole face and selected subregion
 #* @param reference reference syndrome
@@ -306,12 +243,12 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
     
     tmp.file <- tempfile()
     mesh2ply(Rvcg::vcgSmooth(tmp.mesh), filename = tmp.file)
-    as_attachment(readBin(paste0(tmp.file, ".ply"), "raw", n = file.info(paste0(tmp.file, ".ply"))$size), "gestalt.ply")
+    as_attachment(readBin(paste0(tmp.file, ".ply"), "raw", n = file.info(paste0(tmp.file, ".ply"))$size), paste0(selected.synd, "_", selected.age, "_gestalt.ply"))
   })
   
 }
 
-#* comparison plot
+#* download comparison mesh
 #* @param selected.age age for syndrome comparison
 #* @param selected.sex sex for syndrome comparison
 #* @param selected.synd reference syndrome
@@ -351,7 +288,7 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_c
       
       tmp.file <- tempfile()
       mesh2ply(meshDist(final.shape, final.shape2, plot = F)$colMesh, filename = tmp.file)
-      as_attachment(readBin(paste0(tmp.file, ".ply"), "raw", n = file.info(paste0(tmp.file, ".ply"))$size), "gestalt_heatmap.ply")
+      as_attachment(readBin(paste0(tmp.file, ".ply"), "raw", n = file.info(paste0(tmp.file, ".ply"))$size), paste0(selected.synd, "2_", synd_comp, "_", selected.age, "_heatmap.ply"))
       
   })
   
