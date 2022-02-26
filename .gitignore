@@ -57,6 +57,7 @@ vignettes/*.pdf
 **/FB2_baked_screenshots
 **/data
 **/mp_env
+**/.tmp.driveupload
 
 # hpo data
 *.tab
