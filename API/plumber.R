@@ -100,21 +100,25 @@ function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondropl
 
 #* generate atlas prediction
 #* @param selected.sex predicted sex effect
-#* @param selected.age predicted age effect
 #* @param selected.synd predicted syndrome effect
+#* @param min.age morphtarget min
+#* @param max.age morphtarget max
 #* @get /predPC
-function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondroplasia") {
-  # selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
-  if(selected.sex == "Female"){selected.sex <-1
-  } else if(selected.sex == "Male"){selected.sex <- 0} 
-  selected.age <- as.numeric(selected.age)
+function(selected.sex = "Female", min.age = 1, max.age = 20, selected.synd = "Achondroplasia", selected.color = "Generic") {
+  selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
+  if(selected.sex == "Female"){selected.sex <-1.5
+  } else if(selected.sex == "Male"){selected.sex <- -.5} 
   
-  predicted.shape <- matrix(NA, nrow = length(unique(d.meta.combined$Syndrome)), ncol = 2)
+  selected.age <- as.numeric(c(min.age, max.age))
+  
+  predicted.shape <- matrix(NA, nrow = 2, ncol = 200)
   future_promise({
     for(i in 1:nrow(predicted.shape)){
-      selected.synd <- factor(levels(d.meta.combined$Syndrome)[i], levels = levels(d.meta.combined$Syndrome))
-      datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
-    predicted.shape[i,] <- predPC.lm(synd.lm.coefs, datamod)[1:2]
+      
+      datamod <- ~ selected.sex + selected.age[i] + selected.age[i]^2 + selected.age[i]^3 + selected.synd + selected.age[i]:selected.synd
+      predicted.shape[i,] <- predPC.lm(synd.lm.coefs, datamod)
+      
+      if(selected.color == "Generic + gestalt"){} 
     }
     predicted.shape
   })

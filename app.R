@@ -23,7 +23,6 @@ setwd("~/shiny/shinyapps/Syndrome_model/")
  hdrda.df <- data.frame(synd = d.meta.combined$Syndrome, PC.scores[,1:200])
  hdrda.mod <- hdrda(synd ~ ., data = hdrda.df)
  
- 
  predshape.lm <- function(fit, datamod, PC, mshape){
    dims <- dim(mshape)
    mat <- model.matrix(datamod)
@@ -32,7 +31,7 @@ setwd("~/shiny/shinyapps/Syndrome_model/")
    predPC <- (PC %*% t(pred))
    out <- mshape + matrix(predPC, dims[1], dims[2], byrow = F)
    
-   return(out * 1e10)
+   return(out)
  }
  
 ui <- fluidPage(
@@ -139,7 +138,7 @@ server <- function(input, output, session) {
   # close3d()
   selected.synd <- factor("Unaffected Unrelated", levels = levels(d.meta.combined$Syndrome))
   selected.sex <-1
-  selected.age <- 19 
+  selected.age <- 10 
   
   datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
   predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
@@ -167,10 +166,19 @@ server <- function(input, output, session) {
     Snorm <- S/sqrt(sum(S^2))
     syndscores.main <- PC.scores %*% Snorm
     
-    return(list(age.range, syndscores.main[d.meta.combined$Syndrome == input$synd]))
+    if(mean(syndscores.main[d.meta.combined$Syndrome == "Unaffected Unrelated"]) > mean(syndscores.main[d.meta.combined$Syndrome == input$synd])){
+      sev.dir <- "Negative"
+    } else {
+      sev.dir <- "Positive"
+    } 
+    print(mean(syndscores.main[d.meta.combined$Syndrome == "Unaffected Unrelated"]))
+    print(mean(syndscores.main[d.meta.combined$Syndrome == input$synd]))
+    print(sev.dir)
+    print( sd(syndscores.main[d.meta.combined$Syndrome == input$synd]))
+    return(list(age.range, syndscores.main[d.meta.combined$Syndrome == input$synd], sev.dir, Snorm))
   }) 
   
-  doutVar <- outVar#debounce(outVar, 2000)
+  doutVar <- outVar #debounce(outVar, 2000)
   
   output$age_data <- renderTable({
     age.data <- range(doutVar()[[1]])
@@ -205,14 +213,59 @@ server <- function(input, output, session) {
     selected.synd <- input$synd
     selected.sex <- input$sex
     selected.severity <- input$severity
+    selected.color <- "Lightgrey"
+    severity_sd <- sd(doutVar()[[2]])
+    sev.dir <- doutVar()[[3]]
+    Snorm <-  doutVar()[[4]]
+    if(sev.dir == "Negative"){
+      mild.num <- 1.5
+      sev.num <- -1.5
+    } else {
+      mild.num <- -1.5
+      sev.num <- 1.5
+    }
     
-    raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/gestalt_morphtarget"),
-                             query = list(selected.sex = selected.sex, selected.synd = selected.synd, selected.severity = selected.severity, min_age = min_age, max_age = max_age, selected.color = input$texture),
+    
+    if(selected.severity == "Mild"){ selected.severity <- mild.num * severity_sd} else if(selected.severity == "Severe"){selected.severity <- sev.num * severity_sd} else if(selected.severity == "Typical"){selected.severity <- 0}
+    print(sev.dir)
+    print(min_age)
+    print(max_age)
+    
+    
+    main.res <- matrix(t(PC.eigenvectors %*% (selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
+    # main.res <- matrix(0, dim(synd.mshape)[1], dim(synd.mshape)[2])
+    
+    raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/predPC"),
+                             query = list(selected.sex = selected.sex, selected.synd = selected.synd, min_age = min_age, max_age = max_age, selected.color = "Lightgrey"),#input$texture),
                              encode = "json")
     
-    values  <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))
+    parsed_res  <- jsonlite::fromJSON(httr::content(raw_api_res, "text", encoding = "UTF-8"))
     
-    control <- vertexControl(values = values,
+    values_shape <- matrix(NA, ncol = xyz.num * 3, nrow = 2)
+    values_col <- matrix(NA, ncol = xyz.num * 3, nrow = 2)
+    
+    for(i in 1:nrow(values_shape)){
+      
+      #transform PC scores
+      predicted.shape <- showPC(parsed_res[i,1:200]/1e10, PC.eigenvectors[,1:200], synd.mshape)
+      
+      tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
+      final.shape <- vcgSmooth(tmp.mesh)
+      
+      shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(xyz.num, 3, 1))
+      values_shape[i,] <- geomorph::two.d.array(shape.tmp)
+      
+      if(selected.color == "Generic") col.tmp <- array(t(col2rgb(atlas$material$color[atlas$it])), dim = c(xyz.num, 3, 1))/255
+      if(selected.color == "Lightgrey") col.tmp <- array(211/255, dim = c(xyz.num, 3, 1))
+      if(selected.color == "Generic + Gestalt") col.tmp <- array(predtexture.lm(texture.coefs, datamod, texture.pcs, texture.mean, gestalt_combo = T)[atlas$it], dim = c(xyz.num, 3, 1))
+      values_col[i,] <- geomorph::two.d.array(col.tmp)
+    }
+    
+    combined_values <- rbind(as.numeric(t(cbind(values_shape[1,], values_col[1,]))), as.numeric(t(cbind(values_shape[2,], values_col[2,]))))
+    
+    print(dim(combined_values))
+    
+    control <- vertexControl(values = combined_values,
                              vertices = rep(1:nrow(xyz), each = 6),
                              attributes = c(rep(c("x", "red", "y", "green", "z", "blue"), nrow(xyz))),
                              objid = objid)

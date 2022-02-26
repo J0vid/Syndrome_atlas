@@ -16,4 +16,4 @@ RUN R -e "install.packages('devtools', repos='http://cran.rstudio.com/')"
 #RUN sudo apt install statismo-dev r-base-dev    
 # install R packages required
 #RUN R -e "install.packages('devtools', repos='http://cran.rstudio.com/')"
-#RUN R -e "devtools::install_github("zarquon42b/RvtkStatismo",ref="develop"))"
+#RUN R -e "devtools::install_github("zarquon42b/RvtkStatismo",ref="develop")"
