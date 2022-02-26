@@ -34,6 +34,29 @@ setwd("~/shiny/shinyapps/Syndrome_model/")
    return(out)
  }
  
+ predtexture.lm <- function(fit, datamod, PC, mshape, gestalt_combo = NULL){
+   dims <- dim(mshape)
+   mat <- model.matrix(datamod)
+   pred <- mat %*% fit
+   names <- as.matrix(model.frame(datamod))
+   names <- apply(names, 1, paste, collapse = "_")
+   names <- gsub(" ", "", names)
+   predPC <- t(PC %*% t(pred))
+   out <- mshape + predPC
+   
+   predicted.texture3d <- row2array3d(out)[,,1]
+   
+   if(is.null(gestalt_combo) == F){
+     final.texture <- 3 * (predicted.texture3d) + t(col2rgb(atlas$material$color))
+   } else {final.texture <- predicted.texture3d}
+   #scale values
+   maxs <- apply(final.texture, 2, max)
+   mins <- apply(final.texture, 2, min)
+   additive.texture <- scale(final.texture, center = mins, scale = maxs - mins)
+   # hex.mean <- rgb(additive.texture, maxColorValue = 1)
+   return(additive.texture)
+ }
+ 
 ui <- fluidPage(
   tags$head(tags$style(HTML('.irs-from, .irs-to, .irs-min, .irs-max, .irs-single {
             visibility: hidden !important;
@@ -166,16 +189,7 @@ server <- function(input, output, session) {
     Snorm <- S/sqrt(sum(S^2))
     syndscores.main <- PC.scores %*% Snorm
     
-    if(mean(syndscores.main[d.meta.combined$Syndrome == "Unaffected Unrelated"]) > mean(syndscores.main[d.meta.combined$Syndrome == input$synd])){
-      sev.dir <- "Negative"
-    } else {
-      sev.dir <- "Positive"
-    } 
-    print(mean(syndscores.main[d.meta.combined$Syndrome == "Unaffected Unrelated"]))
-    print(mean(syndscores.main[d.meta.combined$Syndrome == input$synd]))
-    print(sev.dir)
-    print( sd(syndscores.main[d.meta.combined$Syndrome == input$synd]))
-    return(list(age.range, syndscores.main[d.meta.combined$Syndrome == input$synd], sev.dir, Snorm))
+    return(list(age.range, syndscores.main[d.meta.combined$Syndrome == input$synd], Snorm, S))
   }) 
   
   doutVar <- outVar #debounce(outVar, 2000)
@@ -207,33 +221,21 @@ server <- function(input, output, session) {
     #age morph target####
     min_age <- round(abs(min(doutVar()[[1]])))
     max_age <- round(max(doutVar()[[1]]))
-    # xyz <- initial.scene()[[2]]
-    # objid <- initial.scene()[[1]]
+ 
     #api call
     selected.synd <- input$synd
     selected.sex <- input$sex
     selected.severity <- input$severity
-    selected.color <- "Lightgrey"
+    selected.color <- input$texture
     severity_sd <- sd(doutVar()[[2]])
-    sev.dir <- doutVar()[[3]]
-    Snorm <-  doutVar()[[4]]
-    if(sev.dir == "Negative"){
-      mild.num <- 1.5
-      sev.num <- -1.5
-    } else {
-      mild.num <- -1.5
-      sev.num <- 1.5
-    }
+    Snorm <-  doutVar()[[3]]
+    S <- doutVar()[[4]]
     
-    
-    if(selected.severity == "Mild"){ selected.severity <- mild.num * severity_sd} else if(selected.severity == "Severe"){selected.severity <- sev.num * severity_sd} else if(selected.severity == "Typical"){selected.severity <- 0}
-    print(sev.dir)
-    print(min_age)
-    print(max_age)
-    
-    
-    main.res <- matrix(t(PC.eigenvectors %*% (selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
-    # main.res <- matrix(0, dim(synd.mshape)[1], dim(synd.mshape)[2])
+    if(selected.severity == "Mild"){ selected.severity <- -1.5 * severity_sd} else if(selected.severity == "Severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "Typical"){selected.severity <- 0}
+ 
+    severity.resids <- S * (selected.severity)
+    print(severity.resids)
+    # severity.resids <- matrix(0, dim(synd.mshape)[1], dim(synd.mshape)[2])
     
     raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/predPC"),
                              query = list(selected.sex = selected.sex, selected.synd = selected.synd, min_age = min_age, max_age = max_age, selected.color = "Lightgrey"),#input$texture),
@@ -245,11 +247,11 @@ server <- function(input, output, session) {
     values_col <- matrix(NA, ncol = xyz.num * 3, nrow = 2)
     
     for(i in 1:nrow(values_shape)){
-      
+    
       #transform PC scores
-      predicted.shape <- showPC(parsed_res[i,1:200]/1e10, PC.eigenvectors[,1:200], synd.mshape)
+      predicted.shape <- showPC((severity.resids[1:200] + parsed_res[i,1:200])/1e10, PC.eigenvectors[,1:200], synd.mshape)
       
-      tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
+      tmp.mesh$vb[-4,] <- t(predicted.shape)
       final.shape <- vcgSmooth(tmp.mesh)
       
       shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(xyz.num, 3, 1))
@@ -257,10 +259,21 @@ server <- function(input, output, session) {
       
       if(selected.color == "Generic") col.tmp <- array(t(col2rgb(atlas$material$color[atlas$it])), dim = c(xyz.num, 3, 1))/255
       if(selected.color == "Lightgrey") col.tmp <- array(211/255, dim = c(xyz.num, 3, 1))
-      if(selected.color == "Generic + Gestalt") col.tmp <- array(predtexture.lm(texture.coefs, datamod, texture.pcs, texture.mean, gestalt_combo = T)[atlas$it], dim = c(xyz.num, 3, 1))
+      if(selected.color == "Generic + Gestalt"){
+        selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
+        if(selected.sex == "Female"){selected.sex <-1.5
+        } else if(selected.sex == "Male"){selected.sex <- -.5} 
+        
+        selected.age <- as.numeric(c(min_age, max_age))
+        
+        datamod <- ~ selected.sex + selected.age[i] + selected.age[i]^2 + selected.age[i]^3 + selected.synd + selected.age[i]:selected.synd
+        
+        col.tmp <- array(predtexture.lm(texture.coefs, datamod, texture.pcs, texture.mean, gestalt_combo = T)[atlas$it,], dim = c(xyz.num, 3, 1))
+        # col.tmp <- array(t(col2rgb(atlas$material$color[atlas$it])), dim = c(xyz.num, 3, 1))/255
+        }
       values_col[i,] <- geomorph::two.d.array(col.tmp)
     }
-    
+    print(values_col[1,1:5])
     combined_values <- rbind(as.numeric(t(cbind(values_shape[1,], values_col[1,]))), as.numeric(t(cbind(values_shape[2,], values_col[2,]))))
     
     print(dim(combined_values))
@@ -378,7 +391,7 @@ server <- function(input, output, session) {
                              query = list(selected.sex = selected.sex, selected.synd = selected.synd, synd_comp = synd_comp, selected.severity = selected.severity, min_age = min_age, max_age = max_age, facial_subregion = selected.node),
                              encode = "json")
     
-    values  <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))
+    values  <- jsonlite::fromJSON(httr::content(raw_api_res, "text", encoding = "UTF-8"))
     
     control_combined <- vertexControl(values = values, 
                                       vertices = c(rep(1:nrow(xyz), each = 6)),
@@ -521,15 +534,13 @@ server <- function(input, output, session) {
                                encode = "json")
       
       pred.comp <- ex_mesh
-      pred.comp$vb[-4,] <- t(jsonlite::fromJSON(httr::content(raw_api_res, "text")))/1e10
+      pred.comp$vb[-4,] <- t(jsonlite::fromJSON(httr::content(raw_api_res, "text", encoding = "UTF-8")))/1e10
       
       par3d(userMatrix = front.face2, zoom = .75)
       meshDist(ex_mesh, pred.comp)
       rglwidget()
       
     }
-    
-    
     
   })
   

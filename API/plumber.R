@@ -66,39 +66,22 @@ predtexture.lm <- function(fit, datamod, PC, mshape, gestalt_combo = NULL){
   predicted.texture3d <- row2array3d(out)[,,1]
   
   if(is.null(gestalt_combo) == F){
-    final.texture <-  2*(predicted.texture3d) + t(col2rgb(atlas$material$color))
+    final.texture <-  3*(predicted.texture3d) + t(col2rgb(atlas$material$color))
   } else {final.texture <- predicted.texture3d}
   
   #scale values
   maxs <- apply(final.texture, 2, max)
   mins <- apply(final.texture, 2, min)
   additive.texture <- scale(final.texture, center = mins, scale = maxs - mins)
-  hex.mean <- rgb(additive.texture, maxColorValue = 1)
+  # hex.mean <- rgb(additive.texture, maxColorValue = 1)
  
-  return(hex.mean)
+  return(additive.texture)
 }
 
 #* @apiTitle Syndrome model API
 
-#* generate atlas prediction
-#* @param selected.sex predicted sex effect
-#* @param selected.age predicted age effect
-#* @param selected.synd predicted syndrome effect
-#* @get /predshape
-function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondroplasia") {
-  selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
-  if(selected.sex == "Female"){selected.sex <-1
-  } else if(selected.sex == "Male"){selected.sex <- 0} 
-  selected.age <- as.numeric(selected.age)
-  
-  datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
- future_promise({
-  predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
- })
-  
-}
 
-#* generate atlas prediction
+#* generate atlas prediction for Shiny app
 #* @param selected.sex predicted sex effect
 #* @param selected.synd predicted syndrome effect
 #* @param min.age morphtarget min
@@ -121,34 +104,6 @@ function(selected.sex = "Female", min.age = 1, max.age = 20, selected.synd = "Ac
       if(selected.color == "Generic + gestalt"){} 
     }
     predicted.shape
-  })
-  
-}
-
-
-#* generate atlas prediction
-#* @param selected.sex predicted sex effect
-#* @param selected.age predicted age effect
-#* @param selected.synd predicted syndrome effect
-#* @get /predshape_mesh
-function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondroplasia", res) {
-  selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
-  if(selected.sex == "Female"){selected.sex <-1
-  } else if(selected.sex == "Male"){selected.sex <- 0} 
-  selected.age <- as.numeric(selected.age)
-  
-  datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
-  print(selected.synd)
-  print(selected.sex)
-  
-  future_promise({
-  predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
-  
-  tmp.mesh <- atlas
-  tmp.mesh$vb[-4,] <- t(predicted.shape)
-  
-  Rvcg::vcgSmooth(tmp.mesh)
-
   })
   
 }
@@ -211,77 +166,6 @@ function(comp_age = 12, comp_sex = "Female", reference = "Unaffected Unrelated",
   
   }) #end future
   
-  
-}
-
-#* generate atlas prediction for texture (vertex colors)
-#* @param selected.sex predicted sex effect
-#* @param selected.age predicted age effect
-#* @param selected.synd predicted syndrome effect
-#* @get /predtexture
-function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondroplasia", gestalt_combo = NULL) {
-  selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
-  if(selected.sex == "Female"){selected.sex <-1
-  } else if(selected.sex == "Male"){selected.sex <- 0} 
-  selected.age <- as.numeric(selected.age)
-  
-  datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
-  
-  
-  future_promise({
-  predicted.texture <- predtexture.lm(texture.coefs[,1:300], datamod, texture.pcs, texture.mean, gestalt_combo = gestalt_combo)
-  })
-  
-}
-
-#* generate atlas morphtarget
-#* @param selected.sex predicted sex effect
-#* @param selected.synd predicted syndrome effect
-#* @param selected.severity one of Mild, Typical, or Severe
-#* @param min_age morphtarget min
-#* @param max_age morphtarget max
-#* @param severity_sd standard deviation of the severity scores
-#* @get /gestalt_morphtarget
-function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", selected.severity = "Typical", min_age = 1, max_age = 20, severity_sd = .02, selected.color = "Generic") {
-  selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
-  if(selected.sex == "Female"){selected.sex <- 1.5
-  } else if(selected.sex == "Male"){selected.sex <- -.5}
-  
-  #severity math####
-  S <- matrix(synd.lm.coefs[grepl(pattern = selected.synd, rownames(synd.lm.coefs)),], nrow = 1, ncol = ncol(PC.eigenvectors))
-  Snorm <- S/sqrt(sum(S^2))
-  
-  minage <- min_age
-  nframes <- max_age
-  
-  if(selected.severity == "Mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "Severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "Typical"){selected.severity <- 0}
-future_promise({
-  values.shape <- matrix(NA, ncol = xyz.num * 3, nrow = 2)
-  values_col <- matrix(NA, ncol = xyz.num * 3, nrow = 2)
-
-  for(i in 1:nrow(values.shape)){
-    selected.age <- as.numeric(c(min_age, max_age)[i])
-    
-    main.res <- 1e10 * matrix(t(PC.eigenvectors %*% t(selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
-    
-    datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
-    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
-    
-    tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
-    final.shape <- vcgSmooth(tmp.mesh)
-    
-    shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(xyz.num, 3, 1))
-    values.shape[i,] <- geomorph::two.d.array(shape.tmp)
-    
-    if(selected.color == "Generic") col.tmp <- array(t(col2rgb(atlas$material$color[atlas$it])), dim = c(xyz.num, 3, 1))/255
-    if(selected.color == "Lightgrey") col.tmp <- array(211/255, dim = c(xyz.num, 3, 1))
-    if(selected.color == "Generic + Gestalt") col.tmp <- array(predtexture.lm(texture.coefs, datamod, texture.pcs, texture.mean, gestalt_combo = T)[atlas$it], dim = c(xyz.num, 3, 1))
-    values_col[i,] <- geomorph::two.d.array(col.tmp)
-  }
-  
-  combined_values <- rbind(as.numeric(t(cbind(values.shape[1,], values_col[1,]))), as.numeric(t(cbind(values.shape[2,], values_col[2,]))))
-  return(combined_values)
-})
   
 }
 
@@ -399,3 +283,80 @@ function(reference = "Unaffected Unrelated", synd_comp = "Costello Syndrome", fa
   # }) #end future
   
 }
+
+#* generate atlas prediction as downloadable mesh
+#* @param selected.sex predicted sex effect
+#* @param selected.age predicted age effect
+#* @param selected.synd predicted syndrome effect
+#* @serializer contentType list(type="application/octet-stream")
+#* @get /predshape_mesh
+function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondroplasia", res) {
+  selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
+  if(selected.sex == "Female"){selected.sex <-1
+  } else if(selected.sex == "Male"){selected.sex <- 0} 
+  selected.age <- as.numeric(selected.age)
+  
+  datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+  
+  future_promise({
+    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+    
+    tmp.mesh <- atlas
+    tmp.mesh$vb[-4,] <- t(predicted.shape)
+    
+    tmp.file <- tempfile()
+    mesh2ply(Rvcg::vcgSmooth(tmp.mesh), filename = tmp.file)
+    as_attachment(readBin(paste0(tmp.file, ".ply"), "raw", n = file.info(paste0(tmp.file, ".ply"))$size), "gestalt.ply")
+  })
+  
+}
+
+#* comparison plot
+#* @param selected.age age for syndrome comparison
+#* @param selected.sex sex for syndrome comparison
+#* @param selected.synd reference syndrome
+#* @param synd_comp compared syndrome
+#* @param selected.severity Mild, Typical, or Severe?
+#* @param severity_sd what's a standard deviation of the severity scores
+#* @serializer contentType list(type="application/octet-stream")
+#* @get /comparison_mesh
+function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_comp = "Achondroplasia", selected.severity = "Typical", selected.age = 10, severity_sd = .02) {
+  selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
+  synd_comp <- factor(synd_comp, levels = levels(d.meta.combined$Syndrome))
+  if(selected.sex == "Female"){selected.sex <- 1.5
+  } else if(selected.sex == "Male"){selected.sex <- -.5}
+  selected.age <- as.numeric(selected.age)
+  
+  #severity math####
+  S <- matrix(synd.lm.coefs[grepl(pattern = selected.synd, rownames(synd.lm.coefs)),], nrow = 1, ncol = ncol(PC.eigenvectors))
+  Snorm <- S/sqrt(sum(S^2))
+  
+  if(selected.severity == "Mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "Severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "Typical"){selected.severity <- 0}
+  
+  future_promise({
+
+      main.res <- 1e10 * matrix(t(PC.eigenvectors %*% t(selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
+      
+      datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+      predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
+      
+      tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
+      final.shape <- vcgSmooth(tmp.mesh)
+      
+      datamod_comp <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + synd_comp + selected.age:synd_comp
+      predicted.shape <- predshape.lm(synd.lm.coefs, datamod_comp, PC.eigenvectors, synd.mshape)
+      
+      tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
+      final.shape2 <- vcgSmooth(tmp.mesh)
+      
+      tmp.file <- tempfile()
+      mesh2ply(meshDist(final.shape, final.shape2, plot = F)$colMesh, filename = tmp.file)
+      as_attachment(readBin(paste0(tmp.file, ".ply"), "raw", n = file.info(paste0(tmp.file, ".ply"))$size), "gestalt_heatmap.ply")
+      
+  })
+  
+  
+}
+
+
+
