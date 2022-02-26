@@ -80,98 +80,26 @@ predtexture.lm <- function(fit, datamod, PC, mshape, gestalt_combo = NULL){
 
 #* @apiTitle Syndrome model API
 
-#* generate atlas prediction for Shiny app
+#* generate atlasPC scores for each syndrome at a given age & sex
 #* @param selected.sex predicted sex effect
+#* @param selected.age predicted age effect
 #* @param selected.synd predicted syndrome effect
-#* @param min.age morphtarget min
-#* @param max.age morphtarget max
 #* @get /predPC
-function(selected.sex = "Female", min.age = 1, max.age = 20, selected.synd = "Achondroplasia", selected.color = "Generic") {
-  selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
-  if(selected.sex == "Female"){selected.sex <-1.5
-  } else if(selected.sex == "Male"){selected.sex <- -.5} 
+function(selected.sex = "Female", selected.age = 12, selected.synd = "Achondroplasia") {
+  # selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
+  if(selected.sex == "Female"){selected.sex <-1
+  } else if(selected.sex == "Male"){selected.sex <- 0} 
+  selected.age <- as.numeric(selected.age)
   
-  selected.age <- as.numeric(c(min.age, max.age))
-  
-  predicted.shape <- matrix(NA, nrow = 2, ncol = 200)
+  predicted.shape <- matrix(NA, nrow = length(unique(d.meta.combined$Syndrome)), ncol = 2)
   future_promise({
     for(i in 1:nrow(predicted.shape)){
-      
-      datamod <- ~ selected.sex + selected.age[i] + selected.age[i]^2 + selected.age[i]^3 + selected.synd + selected.age[i]:selected.synd
-      predicted.shape[i,] <- predPC.lm(synd.lm.coefs, datamod)
-      
-      if(selected.color == "Generic + gestalt"){} 
+      selected.synd <- factor(levels(d.meta.combined$Syndrome)[i], levels = levels(d.meta.combined$Syndrome))
+      datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+      predicted.shape[i,] <- predPC.lm(synd.lm.coefs, datamod)[1:2]
     }
     predicted.shape
   })
-  
-}
-
-#* comparison morphtarget
-#* @param comp_age age for syndrome comparison
-#* @param comp_sex sex for syndrome comparison
-#* @param reference reference syndrome
-#* @param synd_comp compared syndrome
-#* @param facial_subset what part of the face to analyze
-#* @get /comparison_morphtarget
-function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_comp = "Achondroplasia", selected.severity = "Typical", min_age = 1, max_age = 20, severity_sd = .02, facial_subregion = 1) {
-  selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
-  synd_comp <- factor(synd_comp, levels = levels(d.meta.combined$Syndrome))
-  if(selected.sex == "Female"){selected.sex <- 1.5
-  } else if(selected.sex == "Male"){selected.sex <- -.5}
-  
-  facial_subregion <- as.numeric(facial_subregion)
-  #severity math####
-  S <- matrix(synd.lm.coefs[grepl(pattern = selected.synd, rownames(synd.lm.coefs)),], nrow = 1, ncol = ncol(PC.eigenvectors))
-  Snorm <- S/sqrt(sum(S^2))
-  
-  minage <- min_age
-  nframes <- max_age
-  
-  if(selected.severity == "Mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "Severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "Typical"){selected.severity <- 0}
-  
-  future_promise({
-  values <- matrix(NA, ncol = xyz.num * 3, nrow = 3)
-  values_col <- matrix(NA, ncol = xyz.num * 3, nrow = 3)
-  
-  for(i in 1:nrow(values)){
-    selected.age <- as.numeric(c(min_age, mean(c(as.numeric(min_age), as.numeric(max_age))), max_age)[i])
-    
-    main.res <- 1e10 * matrix(t(PC.eigenvectors %*% t(selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
-    
-    datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
-    predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
-    
-    tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
-    final.shape <- vcgSmooth(tmp.mesh)
-    
-    shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(xyz.num, 3, 1))
-    values[i,] <- geomorph::two.d.array(shape.tmp)
-    
-    datamod_comp <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + synd_comp + selected.age:synd_comp
-    predicted.shape <- predshape.lm(synd.lm.coefs, datamod_comp, PC.eigenvectors, synd.mshape)
-    
-    tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
-    final.shape2 <- vcgSmooth(tmp.mesh)
-    
-    #if a facial subregion is selected, let's only color the region and leave everything else grey
-    if(facial_subregion == 1){
-    col.tmp <- array(t(col2rgb(meshDist(final.shape, final.shape2, plot = F)$cols[atlas$it])), dim = c(xyz.num, 3, 1))/255
-    } else{
-      node.code <- c("posterior_mandible" = 2, "nose" = 3,"anterior_mandible" = 4, "brow" = 5, "zygomatic" = 6, "premaxilla" = 7)
-      tmp.meshdist <- meshDist(final.shape, final.shape2, plot = F)$cols
-      tmp.meshdist[modules[,names(node.code)[node.code == facial_subregion]] == F] <- "#d3d3d3"
-      
-      col.tmp <- array(t(col2rgb(tmp.meshdist[atlas$it])), dim = c(xyz.num, 3, 1))/255
-    }
-    values_col[i,] <- geomorph::two.d.array(col.tmp)
-  }
-  
-  combined_values <- rbind(as.numeric(t(cbind(values[1,], values_col[1,]))), as.numeric(t(cbind(values[2,], values_col[2,]))), as.numeric(t(cbind(values[3,], values_col[3,]))))
-  return(combined_values)
-  })
-  
-  
 }
 
 #* get similarity scores for whole face and selected subregion
@@ -291,9 +219,9 @@ function(selected.sex = "Female", selected.synd = "Unaffected Unrelated", synd_c
       as_attachment(readBin(paste0(tmp.file, ".ply"), "raw", n = file.info(paste0(tmp.file, ".ply"))$size), paste0(selected.synd, "2_", synd_comp, "_", selected.age, "_heatmap.ply"))
       
   })
-  
-  
 }
+
+
 
 
 
