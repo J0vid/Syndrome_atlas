@@ -12,6 +12,10 @@ library(ggrepel)
 library(shinyBS)
 library(grid)
 library(sparsediscrim)
+library(future)
+library(promises)
+
+options(future.globals.maxSize= 891289600) #850MB
 
 setwd("~/shiny/shinyapps/Syndrome_model/")
 #setwd("/data/Syndrome_model_data/")
@@ -19,6 +23,15 @@ setwd("~/shiny/shinyapps/Syndrome_model/")
  load("data.Rdata")
  load("module_indices.Rdata")
  load("pose.Rdata")
+ 
+ #texture data setup
+ load("texture_300PCs.Rdata")
+ texture.coefs <- lm(texture.pca$x[,1:300] ~ d.meta.combined$Sex + d.meta.combined$Age + d.meta.combined$Age^2 + d.meta.combined$Age^3 + d.meta.combined$Syndrome + d.meta.combined$Age:d.meta.combined$Syndrome)$coef
+ texture.pcs <-  texture.pca$rotation[,1:300]
+ texture.mean <- texture.pca$center
+ 
+ tmp.mesh <- atlas
+ 
  #calculations at startup that should make it into the startup file
  hdrda.df <- data.frame(synd = d.meta.combined$Syndrome, PC.scores[,1:200])
  hdrda.mod <- hdrda(synd ~ ., data = hdrda.df)
@@ -231,10 +244,11 @@ server <- function(input, output, session) {
     Snorm <-  doutVar()[[3]]
     S <- doutVar()[[4]]
     
+    future_promise({
     if(selected.severity == "Mild"){ selected.severity <- -1.5 * severity_sd} else if(selected.severity == "Severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "Typical"){selected.severity <- 0}
  
     severity.resids <- S * (selected.severity)
-    print(severity.resids)
+    
     # severity.resids <- matrix(0, dim(synd.mshape)[1], dim(synd.mshape)[2])
     
     raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/predPC"),
@@ -243,8 +257,8 @@ server <- function(input, output, session) {
     
     parsed_res  <- jsonlite::fromJSON(httr::content(raw_api_res, "text", encoding = "UTF-8"))
     
-    values_shape <- matrix(NA, ncol = xyz.num * 3, nrow = 2)
-    values_col <- matrix(NA, ncol = xyz.num * 3, nrow = 2)
+    values_shape <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 2)
+    values_col <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 2)
     
     for(i in 1:nrow(values_shape)){
     
@@ -254,11 +268,11 @@ server <- function(input, output, session) {
       tmp.mesh$vb[-4,] <- t(predicted.shape)
       final.shape <- vcgSmooth(tmp.mesh)
       
-      shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(xyz.num, 3, 1))
+      shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(nrow(xyz), 3, 1))
       values_shape[i,] <- geomorph::two.d.array(shape.tmp)
-      
-      if(selected.color == "Generic") col.tmp <- array(t(col2rgb(atlas$material$color[atlas$it])), dim = c(xyz.num, 3, 1))/255
-      if(selected.color == "Lightgrey") col.tmp <- array(211/255, dim = c(xyz.num, 3, 1))
+
+      if(selected.color == "Generic") col.tmp <- array(t(col2rgb(atlas$material$color[atlas$it])), dim = c(nrow(xyz), 3, 1))/255
+      if(selected.color == "Lightgrey") col.tmp <- array(211/255, dim = c(nrow(xyz), 3, 1))
       if(selected.color == "Generic + Gestalt"){
         selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
         if(selected.sex == "Female"){selected.sex <-1.5
@@ -268,15 +282,14 @@ server <- function(input, output, session) {
         
         datamod <- ~ selected.sex + selected.age[i] + selected.age[i]^2 + selected.age[i]^3 + selected.synd + selected.age[i]:selected.synd
         
-        col.tmp <- array(predtexture.lm(texture.coefs, datamod, texture.pcs, texture.mean, gestalt_combo = T)[atlas$it,], dim = c(xyz.num, 3, 1))
-        # col.tmp <- array(t(col2rgb(atlas$material$color[atlas$it])), dim = c(xyz.num, 3, 1))/255
+        col.tmp <- array(predtexture.lm(texture.coefs, datamod, texture.pcs, texture.mean, gestalt_combo = T)[atlas$it,], dim = c(nrow(xyz), 3, 1))
+        # col.tmp <- array(t(col2rgb(atlas$material$color[atlas$it])), dim = c(nrow(xyz), 3, 1))/255
         }
       values_col[i,] <- geomorph::two.d.array(col.tmp)
     }
-    print(values_col[1,1:5])
-    combined_values <- rbind(as.numeric(t(cbind(values_shape[1,], values_col[1,]))), as.numeric(t(cbind(values_shape[2,], values_col[2,]))))
     
-    print(dim(combined_values))
+    #put promises together and make the scene
+    combined_values <- rbind(as.numeric(t(cbind(values_shape[1,], values_col[1,]))), as.numeric(t(cbind(values_shape[2,], values_col[2,]))))
     
     control <- vertexControl(values = combined_values,
                              vertices = rep(1:nrow(xyz), each = 6),
@@ -286,17 +299,25 @@ server <- function(input, output, session) {
     scene <- scene3d()
     
     return(list(scene, control))
-    
+    }) #end promise
   })
   
   output$gestalt <- renderRglwidget({
     par3d(userMatrix = front.face2, zoom = .75)
-    rglwidget(morph_target()[[1]], controllers = c("control"))
+    then(morph_target(),
+         function(scene){
+           print(str(scene))
+    rglwidget(scene[[1]], controllers = c("control"))
+         })
   })
   
   output$control <- renderPlaywidget({
-    playwidget("gestalt", morph_target()[[2]],
+    then(morph_target(),
+         function(control){
+    playwidget("gestalt", control[[2]],
                respondTo = "age", step = .01)
+         }
+    )
   })
   
   #facial subregion selection####
