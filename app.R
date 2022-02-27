@@ -115,6 +115,7 @@ ui <- fluidPage(
                       ),
                       actionButton("update_comp", "Update Comparison", icon("sync"))),
       conditionalPanel(condition = "input.Atlas_tabs=='Submitted face'",
+                       playwidgetOutput("submitted_mesh"),
                        fileInput("file1", "",
                                  multiple = T,
                                  accept = c(".obj", ".ply", ".png", ".pp", ".csv")
@@ -154,7 +155,6 @@ ui <- fluidPage(
                  column(width = 12,
                   br(),
                  shinydashboard::box(plotlyOutput("posterior_scree"), width = 6),
-                 br(),
                  shinydashboard::box(plotlyOutput("personal_morphospace"), width = 6)
                  )),
         tabPanel("About", br(), HTML("<p style=\"color:black;\">This app aims to help clinical geneticists better understand the characteristic craniofacial features of various genetic syndromes. There are 3 sections to this app and here is my description of how they work. Here are the people that made this app possible.</p>"))#, 
@@ -591,98 +591,131 @@ server <- function(input, output, session) {
   
   #elements of the face_submission branch####
   mesh.et.lms <- reactive({
-    ex_mesh <- vcgSmooth(file2mesh("~/shiny/shinyapps/Perception/to_bake/da_reg.ply"))
-    sample1k <- sample(1:27903, 200)
-    #register landmarks to the space
-    registered.mesh <- rotmesh.onto(ex_mesh, t(ex_mesh$vb[-4, sample1k]), synd.mshape[sample1k,], scale = T)$mesh
-    registered.mesh
+    future_promise({
+      ex_mesh <- vcgSmooth(file2mesh("~/shiny/shinyapps/Perception/to_bake/da_reg.ply"))
+      sample1k <- sample(1:27903, 200)
+      #register landmarks to the space
+      registered.mesh <- rotmesh.onto(ex_mesh, t(ex_mesh$vb[-4, sample1k]), synd.mshape[sample1k,], scale = T)$mesh
+      
+      shape.tmp <- array(t(registered.mesh$vb[-4,])[atlas$it, ], dim = c(nrow(xyz), 3, 1))
+      values <- geomorph::two.d.array(shape.tmp)
+      
+      col.tmp <- array(211/255, dim = c(nrow(xyz), 3, 1))
+      
+      values_col <- geomorph::two.d.array(col.tmp)
+      
+      
+      combined_values <- t(as.numeric(t(cbind(t(values), t(values_col)))))
+      print(ncol(combined_values))
+   
+      control_combined <- vertexControl(values = combined_values, 
+                                        vertices = c(rep(1:nrow(xyz), each = 6)),
+                                        attributes = c(rep(c("x", "red", "y", "green", "z", "blue"), nrow(xyz))),
+                                        objid = objid)
+      
+      scene <- scene3d()
+      # rgl.close()
+      # return(list(scene, control, control2))
+      return(list(scene, control_combined, registered.mesh))
     })
+  })
   
   output$submitted_face <- renderRglwidget({
-    pdf(NULL)
-    dev.off()
+    # 
+    # if(is.null(input$submitted_heatmap)){
+    #   print(shinyGetPar3d("userMatrix", session))
+    # par3d(userMatrix = front.face2, zoom = .75)
+    # plot3d(ex_mesh, col = "lightgrey", axes = F, specular = 1, xlab = "", ylab = "", zlab = "", aspect = "iso")  
+    # rglwidget()
+    # } else if(input$submitted_heatmap == "Compare to syndrome?"){
+    #   #if heatmap, register face, make comp same age?, compare
+    #   selected.sex <- input$current_sex
+    #   selected.age <- input$current_age
+    #   selected.synd <- input$submitted_comp
+    #   
+    #   raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/predshape"),
+    #                            query = list(selected.sex = selected.sex, selected.age = selected.age, selected.synd = selected.synd),
+    #                            encode = "json")
+    #   
+    #   pred.comp <- ex_mesh
+    #   pred.comp$vb[-4,] <- t(jsonlite::fromJSON(httr::content(raw_api_res, "text", encoding = "UTF-8")))/1e10
+    #   
+    #   par3d(userMatrix = front.face2, zoom = .75)
+    #   meshDist(ex_mesh, pred.comp)
+    #   rglwidget()
+    #  
+    #}
     
-    ex_mesh <- mesh.et.lms()
-    if(is.null(input$submitted_heatmap)){
-      print(shinyGetPar3d("userMatrix", session))
     par3d(userMatrix = front.face2, zoom = .75)
-    plot3d(ex_mesh, col = "lightgrey", axes = F, specular = 1, xlab = "", ylab = "", zlab = "", aspect = "iso")  
-    rglwidget()
-    } else if(input$submitted_heatmap == "Compare to syndrome?"){
-      #if heatmap, register face, make comp same age?, compare
-      selected.sex <- input$current_sex
-      selected.age <- input$current_age
-      selected.synd <- input$submitted_comp
-      
-      raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/predshape"),
-                               query = list(selected.sex = selected.sex, selected.age = selected.age, selected.synd = selected.synd),
-                               encode = "json")
-      
-      pred.comp <- ex_mesh
-      pred.comp$vb[-4,] <- t(jsonlite::fromJSON(httr::content(raw_api_res, "text", encoding = "UTF-8")))/1e10
-      
-      par3d(userMatrix = front.face2, zoom = .75)
-      meshDist(ex_mesh, pred.comp)
-      rglwidget()
-      
-    }
-    
+    then(mesh.et.lms(),
+         function(scene){
+           rglwidget(scene[[1]], controllers = c("submitted_mesh"))
+         })
+  })
+  
+  output$submitted_mesh <- renderPlaywidget({
+    then(mesh.et.lms(),
+         function(control){
+           playwidget("new_mesh", control[[2]]
+                      )
+         })
   })
   
   output$posterior_scree <- renderPlotly({
-    
-    projected.mesh <- getPCscores(t(mesh.et.lms()$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
-    # projected.mesh <- getPCscores(t(registered.mesh$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
-    
-    #classify individual's scores using the model
-    # colnames(projected.mesh) <- colnames(PC.scores)
-    
-    posterior.distribution <- predict(hdrda.mod, newdata = projected.mesh, type = "prob")$post
-     
-    posterior.distribution <- sort(posterior.distribution, decreasing = T)
-
-    #used to be part of plot.df: ID = as.factor(1:10),
-    plot.df <- data.frame(Probs = round(as.numeric(posterior.distribution[1:10]), digits = 4), Syndrome = as.factor(names(posterior.distribution[1:10])))
-    plot.df$Syndrome <- as.character(plot.df$Syndrome)
-    plot.df$Syndrome[plot.df$Syndrome == "Unrelated Unaffected"] <- "Non-syndromic"
-
-    plot_ly(data = plot.df, x = ~Syndrome, y = ~Probs, type = "bar", color = I("grey"), hoverinfo = paste0("Syndrome: ", "x", "<br>", "Probability: ", "y")) %>%
-      layout(xaxis = list(tickvals = gsub("_", " ", plot.df$Syndrome), tickangle = 45, ticktext = c(Syndrome = plot.df$Syndrome, Probability = plot.df$Probs), title = "<b>Syndrome</b>"),
-             yaxis = list(title = "<b>Class probability</b>"),
-             paper_bgcolor='white',
-             margin = list(b = 125, l = 50, r = 100)
-      )
+    then(mesh.et.lms(),
+         function(mesh){
+            projected.mesh <- getPCscores(t(mesh[[3]]$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
+            # projected.mesh <- getPCscores(t(registered.mesh$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
+            
+            #classify individual's scores using the model
+            # colnames(projected.mesh) <- colnames(PC.scores)
+            
+            posterior.distribution <- predict(hdrda.mod, newdata = projected.mesh, type = "prob")$post
+             
+            posterior.distribution <- sort(posterior.distribution, decreasing = T)
+        
+            #used to be part of plot.df: ID = as.factor(1:10),
+            plot.df <- data.frame(Probs = round(as.numeric(posterior.distribution[1:10]), digits = 4), Syndrome = as.factor(names(posterior.distribution[1:10])))
+            plot.df$Syndrome <- as.character(plot.df$Syndrome)
+            plot.df$Syndrome[plot.df$Syndrome == "Unrelated Unaffected"] <- "Non-syndromic"
+        
+            plot_ly(data = plot.df, x = ~Syndrome, y = ~Probs, type = "bar", color = I("grey"), hoverinfo = paste0("Syndrome: ", "x", "<br>", "Probability: ", "y")) %>%
+              layout(xaxis = list(tickvals = gsub("_", " ", plot.df$Syndrome), tickangle = 45, ticktext = c(Syndrome = plot.df$Syndrome, Probability = plot.df$Probs), title = "<b>Syndrome</b>"),
+                     yaxis = list(title = "<b>Class probability</b>"),
+                     paper_bgcolor='white',
+                     margin = list(b = 125, l = 50, r = 100)
+              )
+         })
   })
   
   output$personal_morphospace <- renderPlotly({
-    
-    projected.mesh <- getPCscores(t(mesh.et.lms()$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
-    # projected.mesh <- getPCscores(t(registered.mesh$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
-    
-    selected.sex <- input$current_sex
-    selected.age <- input$current_age
-
-    raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/predPC"),
-                             query = list(selected.sex = selected.sex, selected.age = selected.age),
-                             encode = "json")
-
-    parsed_res <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))/1e10
-    
-    plot.df <- data.frame(Syndrome = c("Submitted mesh", levels(d.meta.combined$Syndrome)), Scores = rbind(projected.mesh[1:2], parsed_res))
-    plot.df$Syndrome <- as.character(plot.df$Syndrome)
-    plot.df$Syndrome[plot.df$Syndrome == "Unrelated Unaffected"] <- "Non-syndromic"
-    
-    plot_ly(data = plot.df, x = ~round(Scores.1, digits = 3), y = ~round(Scores.2,digits = 3), text = ~Syndrome, type = "scatter", marker = list(size = 10), 
-            mode = "markers+text",
-            textposition = 'top center', color = I(c(2, rep("#AE80E6", length(unique(d.meta.combined$Syndrome))))), hoverinfo = paste0("PC1 score: ", "x", "<br>", "PC2 score: ", "y")) %>%
-      layout(xaxis = list(title = "<b>PC1 score</b>"),
-             yaxis = list(title = "<b>PC2 score</b>"),
-             paper_bgcolor='white',
-             margin = list(b = 25, l = 25, r = 25, t = 25)
-      ) %>%
-      style(borderRadius = '15px')
+    then(mesh.et.lms(),
+         function(mesh){
+          projected.mesh <- getPCscores(t(mesh[[3]]$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
+          
+          selected.sex <- input$current_sex
+          selected.age <- input$current_age
+      
+          raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/predPC"),
+                                   query = list(selected.sex = selected.sex, selected.age = selected.age),
+                                   encode = "json")
+      
+          parsed_res <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))/1e10
+          
+          plot.df <- data.frame(Syndrome = c("Submitted mesh", levels(d.meta.combined$Syndrome)), Scores = rbind(projected.mesh[1:2], parsed_res))
+          plot.df$Syndrome <- as.character(plot.df$Syndrome)
+          plot.df$Syndrome[plot.df$Syndrome == "Unrelated Unaffected"] <- "Non-syndromic"
+          
+          plot_ly(data = plot.df, x = ~round(Scores.1, digits = 3), y = ~round(Scores.2,digits = 3), text = ~Syndrome, type = "scatter", marker = list(size = 10), 
+                  mode = "markers+text",
+                  textposition = 'top center', color = I(c(2, rep("#AE80E6", length(unique(d.meta.combined$Syndrome))))), hoverinfo = paste0("PC1 score: ", "x", "<br>", "PC2 score: ", "y")) %>%
+            layout(xaxis = list(title = "<b>PC1 score</b>"),
+                   yaxis = list(title = "<b>PC2 score</b>"),
+                   paper_bgcolor='white',
+                   margin = list(b = 25, l = 25, r = 25, t = 25)
+            )
+         })
   })
-  
 }
 
 shinyApp(ui = ui, server = server)
