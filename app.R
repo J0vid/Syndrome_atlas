@@ -1,10 +1,10 @@
 #syndrome gestalts w/age flexibility
 library(shiny)
 library(Morpho)
-# library(geomorph)
+library(geomorph)
 library(rgl)
 library(shinycssloaders)
-library(Jovid)
+# library(Jovid)
 library(Rvcg)
 library(visNetwork)
 library(plotly)
@@ -18,8 +18,10 @@ future::plan("multicore")
 
 options(future.globals.maxSize= 891289600) #850MB
 
-setwd("~/shiny/shinyapps/Syndrome_model/")
-#setwd("/data/Syndrome_model_data/")
+# setwd("~/shiny/shinyapps/Syndrome_model/")
+# setwd("/srv/shiny-server/")
+setwd("/data/Syndrome_model_data/")
+
 # save(atlas, d.meta.combined, front.face, PC.eigenvectors, synd.lm.coefs, synd.mshape, PC.scores, synd.mat, file = "data.Rdata")
  load("data.Rdata")
  load("module_indices.Rdata")
@@ -34,8 +36,61 @@ setwd("~/shiny/shinyapps/Syndrome_model/")
  tmp.mesh <- atlas
  
  #calculations at startup that should make it into the startup file
- hdrda.df <- data.frame(synd = d.meta.combined$Syndrome, PC.scores[,1:200])
- hdrda.mod <- hdrda(synd ~ ., data = hdrda.df)
+ # hdrda.df <- data.frame(synd = d.meta.combined$Syndrome, PC.scores[,1:200])
+ # hdrda.mod <- hdrda(synd ~ ., data = hdrda.df)
+ 
+ array2row3d <- function (data){
+   
+   Nlandmarks = dim(data)[2] * dim(data)[1]
+   if (length(dim(data)) > 2) {
+     x.y = matrix(0, dim(data)[3], dim(data)[1] * dim(data)[2])
+     xseq = seq(1, Nlandmarks, 3)
+     yseq = seq(2, Nlandmarks, 3)
+     zseq = seq(3, Nlandmarks, 3)
+     
+     for (ind in 1:dim(x.y)[1]) {
+       x.y[ind, xseq] = data[, 1, ind]
+       x.y[ind, yseq] = data[, 2, ind]
+       x.y[ind, zseq] = data[, 3, ind]
+     }
+   }
+   else if(length(dim(data)) == 2) {
+     #catch for a matrix with one ind
+     x.y = matrix(0, 1, dim(data)[1] * dim(data)[2])
+     xseq = seq(1, Nlandmarks, 3)
+     yseq = seq(2, Nlandmarks, 3)
+     zseq = seq(3, Nlandmarks, 3)
+     x.y[1, xseq] = data[, 1]
+     x.y[1, yseq] = data[, 2]
+     x.y[1, zseq] = data[, 3]
+   }
+   
+   
+   return(x.y)
+ }
+ 
+ 
+ row2array3d <- function (data, Nlandmarks = length(data[1, ])/3){
+   if (is.matrix(data) | is.data.frame(data) == T) {
+     xseq = seq(1, Nlandmarks * 3, 3)
+     yseq = seq(2, Nlandmarks * 3, 3)
+     zseq = seq(3, Nlandmarks * 3, 3)
+     a = array(0, dim = c(Nlandmarks, 3, length(data[, 1])))
+     for (i in 1:length(data[, 1])) {
+       a[, , i] = as.matrix(cbind(data[i, xseq], data[i, 
+                                                      yseq], data[i, zseq]))
+     }
+   }
+   else {
+     if (is.matrix(data) == F) {
+       xseq = seq(1, Nlandmarks * 3, 3)
+       yseq = seq(2, Nlandmarks * 3, 3)
+       zseq = seq(3, Nlandmarks * 3, 3)
+       a = as.matrix(cbind(data[xseq], data[yseq], data[zseq]))
+     }
+   }
+   return(a)
+ }
  
  predshape.lm <- function(fit, datamod, PC, mshape){
    dims <- dim(mshape)
@@ -45,7 +100,7 @@ setwd("~/shiny/shinyapps/Syndrome_model/")
    predPC <- (PC %*% t(pred))
    out <- mshape + matrix(predPC, dims[1], dims[2], byrow = F)
    
-   return(out)
+   return(out * 1e5)
  }
  
  predtexture.lm <- function(fit, datamod, PC, mshape, gestalt_combo = NULL){
@@ -196,31 +251,31 @@ server <- function(input, output, session) {
   outVar <- reactive({
     #get selected syndrome age range
     age.range <- d.meta.combined$Age[d.meta.combined$Syndrome == input$synd]
-    
+
     #calculate syndrome severity scores for selected syndrome
     #calculate score for the main effect
     S <- synd.lm.coefs[grepl(pattern = input$synd, rownames(synd.lm.coefs)),][1,]
     Snorm <- S/sqrt(sum(S^2))
     syndscores.main <- PC.scores %*% Snorm
-    
+
     return(list(age.range, syndscores.main[d.meta.combined$Syndrome == input$synd], Snorm, S))
-  }) 
-  
+  })
+
   doutVar <- outVar #debounce(outVar, 2000)
-  
+
   output$age_data <- renderTable({
     age.data <- range(doutVar()[[1]])
-    
+
     data.frame("Min" = as.integer(abs(age.data[1])), "Current" = as.integer((diff(age.data) * input$age + 1)), "Max" = as.integer(age.data[2]), check.names = F)
   }, align = "c", width = "100%")
-  
+
   observeEvent(input$synd, {
     # slider_min <-  round(abs(min(doutVar()[[1]])))
     # slider_max <- round(max(doutVar()[[1]]))
     # animation_length <- (slider_max - slider_min) / 2000
     # print(animation_length)
     # updateSliderInput(session, "age", label = "Age", min = slider_min, max = slider_max, value = mean(doutVar()[[1]]))
-    # how many years/second do I want for the animation? 
+    # how many years/second do I want for the animation?
     # updateSliderInput(session, "age", label = "Age", min = 0, max = 1, value = 0.29, step = animation_length)
     M.synds <- c("Klinefelter Syndrome", "XXYY")
     F.synds <- c("XXX", "Turner Syndrome", "Craniofrontonasal Dysplasia", "18p Deletion")
@@ -235,7 +290,7 @@ server <- function(input, output, session) {
     #age morph target####
     min_age <- round(abs(min(doutVar()[[1]])))
     max_age <- round(max(doutVar()[[1]]))
- 
+
     #api call
     selected.synd <- input$synd
     selected.sex <- input$sex
@@ -244,34 +299,36 @@ server <- function(input, output, session) {
     severity_sd <- sd(doutVar()[[2]])
     Snorm <-  doutVar()[[3]]
     S <- doutVar()[[4]]
-    
+
+    sev.mod <- lm(doutVar()[[2]] ~ d.meta.combined$Age[d.meta.combined$Syndrome == input$synd])$fit
+    sev.age <- sev.mod[c(which.min(d.meta.combined$Age[d.meta.combined$Syndrome == input$synd]), which.max(d.meta.combined$Age[d.meta.combined$Syndrome == input$synd]))]
+
     selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
     if(selected.sex == "Female"){selected.sex <- 1.5
-    } else if(selected.sex == "Male"){selected.sex <- -.5} 
+    } else if(selected.sex == "Male"){selected.sex <- -.5}
     selected.age <- as.numeric(c(min_age, max_age))
+    print(range(doutVar()[[2]]))
+    print(severity_sd)
+    print(mean(doutVar()[[2]]))
+    print(sev.age)
     
     future_promise({
-    if(selected.severity == "Mild"){ selected.severity <- -1.5 * severity_sd} else if(selected.severity == "Severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "Typical"){selected.severity <- 0}
  
-    # severity.resids <- S * (selected.severity)
-    
-    severity.resids <- matrix(0, dim(synd.mshape)[1], dim(synd.mshape)[2])
-    
-    # raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/predPC"),
-    #                          query = list(selected.sex = selected.sex, selected.synd = selected.synd, min_age = min_age, max_age = max_age, selected.color = "Lightgrey"),#input$texture),
-    #                          encode = "json")
-    # 
-    # parsed_res  <- jsonlite::fromJSON(httr::content(raw_api_res, "text", encoding = "UTF-8"))
-    # 
     values_shape <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 2)
     values_col <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 2)
     
     for(i in 1:nrow(values_shape)){
+      if(selected.severity == "Mild"){ selected.severity <- (-1 * severity_sd) + sev.age[i]} else if(selected.severity == "Severe"){selected.severity <- (1 * severity_sd) + sev.age[i]} else if(selected.severity == "Typical"){selected.severity <- 0}
+      
+      severity.resids <- 1e5 * matrix(t(PC.eigenvectors %*% (selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
+      # severity.resids <- matrix(0, dim(synd.mshape)[1], dim(synd.mshape)[2])
+      
+      
       datamod <- ~ selected.sex + selected.age[i] + selected.age[i]^2 + selected.age[i]^3 + selected.synd + selected.age[i]:selected.synd
       
       predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
       
-      tmp.mesh$vb[-4,] <- t(predicted.shape)
+      tmp.mesh$vb[-4,] <- t(predicted.shape + severity.resids)
       final.shape <- vcgSmooth(tmp.mesh)
       
       shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(nrow(xyz), 3, 1))
@@ -282,17 +339,24 @@ server <- function(input, output, session) {
       if(selected.color == "Generic + Gestalt"){
         selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
         if(selected.sex == "Female"){selected.sex <-1.5
-        } else if(selected.sex == "Male"){selected.sex <- -.5} 
-        
+        } else if(selected.sex == "Male"){selected.sex <- -.5}
+
         selected.age <- as.numeric(c(min_age, max_age))
-        
+
         datamod <- ~ selected.sex + selected.age[i] + selected.age[i]^2 + selected.age[i]^3 + selected.synd + selected.age[i]:selected.synd
-        
+
         col.tmp <- array(predtexture.lm(texture.coefs, datamod, texture.pcs, texture.mean, gestalt_combo = T)[atlas$it,], dim = c(nrow(xyz), 3, 1))
         # col.tmp <- array(t(col2rgb(atlas$material$color[atlas$it])), dim = c(nrow(xyz), 3, 1))/255
-        }
-      values_col[i,] <- geomorph::two.d.array(col.tmp)
+      }
+      
+      # col.tmp <- array2row3d(matrix(rep(c(.8,.8,.8), nrow(xyz)), ncol = 3, byrow = T)) #geomorph::two.d.array(col.tmp)
+      print(dim(col.tmp))
+      values_col[i,] <- array2row3d(col.tmp) #geomorph::two.d.array(col.tmp)
     }
+    
+    values_shape <- round(values_shape)
+    values_col <- round(values_col, digits = 3)
+    
     
     #put promises together and make the scene
     combined_values <- rbind(as.numeric(t(cbind(values_shape[1,], values_col[1,]))), as.numeric(t(cbind(values_shape[2,], values_col[2,]))))
@@ -334,15 +398,15 @@ server <- function(input, output, session) {
     module.names[1:7] <- c("face", "posterior_mandible", "nose", "anterior_mandible", "brow", "zygomatic", "premaxilla") #c("Whole Face", "Nose", "Eyes", "Jaw", "Chin", "Mouth", "Cheeks")
     nodes <- data.frame(id = 1:7, label = module.names[1:7], title = module.names[1:7], shape = "circularImage", color = "#fca311", color.highlight = "#fca311", image = paste0(path_to_images, "mod", 1:7, ".png"))#, value = c(rep(130,7), rep(130,8)))
     edges <- data.frame(from = 1, to = 2:7)
-    
+
     visNetwork(nodes, edges)  %>%
       visInteraction(hover = F,
                      dragNodes = T,
                      dragView = T) %>%
-      visOptions(nodesIdSelection = list(enabled = T, 
+      visOptions(nodesIdSelection = list(enabled = T,
                                          selected = "1"),
                  highlightNearest = F
-      ) %>% 
+      ) %>%
       visNodes(size = 50,
                shapeProperties = list(useBorderWithImage = TRUE),
                borderWidthSelected = 7,
@@ -357,32 +421,32 @@ server <- function(input, output, session) {
       visPhysics(stabilization = FALSE) %>%
       visLayout(randomSeed = 12)# %>%
       #visHierarchicalLayout()
-    
+
   })
-  
+
   #comparison reactive####
   outVar2 <- reactive({
     #get selected syndrome age range
     age.range <- d.meta.combined$Age[d.meta.combined$Syndrome == input$reference]
-    
+
     #calculate syndrome severity scores for selected syndrome
     #calculate score for the main effect
     if(input$reference == "Unaffected Unrelated"){
       S <- synd.lm.coefs[1,]
     } else {S <- synd.lm.coefs[grepl(pattern = input$reference, rownames(synd.lm.coefs)),][1,]}
-    
+
     Snorm <- S/sqrt(sum(S^2))
     syndscores.main <- PC.scores %*% Snorm
-    
+
     return(list(age.range, syndscores.main[d.meta.combined$Syndrome == input$reference], Snorm))
-  }) 
-  
+  })
+
   output$age_data_comp <- renderTable({
     age.data <- range(outVar2()[[1]])
-    
+
     data.frame("Min" = as.integer(abs(age.data[1])), "Current" = as.integer((diff(age.data) * input$comp_age + 1)), "Max" = as.integer(age.data[2]), check.names = F)
   }, align = "c", width = "100%")
-  
+
   observeEvent(input$synd_comp, {
     # slider_min <-  round(abs(min(outVar2()[[1]])))
     # slider_max <- round(max(outVar2()[[1]]))
@@ -396,66 +460,62 @@ server <- function(input, output, session) {
       updateSelectInput(session, "comp_sex", "Sex", choices = sex.choices)
     }
   })
-  
+
   morph_target_comparison <- eventReactive(input$update_comp, {
     #age morph target####
     min_age <- round(abs(min(outVar2()[[1]])))
     max_age <- round(max(outVar2()[[1]]))
-    
+
     #api call
     selected.synd <- input$reference
     synd_comp <- input$synd_comp
     selected.sex <- input$comp_sex
     selected.severity <- input$comp_severity
-    
+    severity_sd <- sd(outVar2()[[2]])
+
     selected.synd <- factor(selected.synd, levels = levels(d.meta.combined$Syndrome))
     synd_comp <- factor(synd_comp, levels = levels(d.meta.combined$Syndrome))
     if(selected.sex == "Female"){selected.sex <- 1.5
     } else if(selected.sex == "Male"){selected.sex <- -.5}
-    
+
     if(selected.severity == "Mild"){selected.severity <- -1.5 * severity_sd} else if(selected.severity == "Severe"){selected.severity <- 1.5 * severity_sd} else if(selected.severity == "Typical"){selected.severity <- 0}
-    
+
     Snorm <- outVar2()[[3]]
-    
+
     if(is.null(input$network_selected)){
       selected.node <- 1 } else if(input$network_selected == ""){
            selected.node <- 1} else{
            selected.node <- as.numeric(input$network_selected)
            }
-    
+
     facial_subregion <- as.numeric(selected.node)
-    
-    # raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/comparison_morphtarget"),
-    #                          query = list(selected.sex = selected.sex, selected.synd = selected.synd, synd_comp = synd_comp, selected.severity = selected.severity, min_age = min_age, max_age = max_age, facial_subregion = selected.node),
-    #                          encode = "json")
-    # 
-    # values  <- jsonlite::fromJSON(httr::content(raw_api_res, "text", encoding = "UTF-8"))
-    
+
+
     future_promise({
       values <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 3)
       values_col <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 3)
-      
+
       for(i in 1:nrow(values)){
         selected.age <- as.numeric(c(min_age, mean(c(as.numeric(min_age), as.numeric(max_age))), max_age)[i])
-        
-        # main.res <- 1e10 * matrix(t(PC.eigenvectors %*% t(selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
-        main.res <- 1e10 * matrix(0, dim(synd.mshape)[1], dim(synd.mshape)[2])
-        
+
+        severity.resids <- 1e5 * matrix(t(PC.eigenvectors %*% (selected.severity * Snorm)), dim(synd.mshape)[1], dim(synd.mshape)[2])
+        # main.res <- 1e10 * matrix(0, dim(synd.mshape)[1], dim(synd.mshape)[2])
+
         datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
         predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)
-        
-        tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
+
+        tmp.mesh$vb[-4,] <- t(predicted.shape + severity.resids)
         final.shape <- vcgSmooth(tmp.mesh)
-        
+
         shape.tmp <- array(t(final.shape$vb[-4,])[atlas$it, ], dim = c(nrow(xyz), 3, 1))
         values[i,] <- geomorph::two.d.array(shape.tmp)
-        
+
         datamod_comp <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + synd_comp + selected.age:synd_comp
         predicted.shape <- predshape.lm(synd.lm.coefs, datamod_comp, PC.eigenvectors, synd.mshape)
-        
-        tmp.mesh$vb[-4,] <- t(predicted.shape + main.res)
+
+        tmp.mesh$vb[-4,] <- t(predicted.shape + severity.resids)
         final.shape2 <- vcgSmooth(tmp.mesh)
-        
+
         #if a facial subregion is selected, let's only color the region and leave everything else grey
         if(facial_subregion == 1){
           col.tmp <- array(t(col2rgb(meshDist(final.shape, final.shape2, plot = F)$cols[atlas$it])), dim = c(nrow(xyz), 3, 1))/255
@@ -463,26 +523,29 @@ server <- function(input, output, session) {
           node.code <- c("posterior_mandible" = 2, "nose" = 3,"anterior_mandible" = 4, "brow" = 5, "zygomatic" = 6, "premaxilla" = 7)
           tmp.meshdist <- meshDist(final.shape, final.shape2, plot = F)$cols
           tmp.meshdist[modules[,names(node.code)[node.code == facial_subregion]] == F] <- "#d3d3d3"
-          
+
           col.tmp <- array(t(col2rgb(tmp.meshdist[atlas$it])), dim = c(nrow(xyz), 3, 1))/255
         }
         values_col[i,] <- geomorph::two.d.array(col.tmp)
       }
       
+      values <- round(values)
+      values_col <- round(values_col, digits = 3)
+
       combined_values <- rbind(as.numeric(t(cbind(values[1,], values_col[1,]))), as.numeric(t(cbind(values[2,], values_col[2,]))), as.numeric(t(cbind(values[3,], values_col[3,]))))
-      
-      control_combined <- vertexControl(values = combined_values, 
+
+      control_combined <- vertexControl(values = combined_values,
                                         vertices = c(rep(1:nrow(xyz), each = 6)),
                                         attributes = c(rep(c("x", "red", "y", "green", "z", "blue"), nrow(xyz))),
                                         objid = objid)
-      
+
       scene <- scene3d()
       # rgl.close()
       # return(list(scene, control, control2))
       return(list(scene, control_combined))
       })
   })
-  
+
   output$comparison <- renderRglwidget({
     par3d(userMatrix = front.face2, zoom = .75)
     then(morph_target_comparison(),
@@ -490,7 +553,7 @@ server <- function(input, output, session) {
            rglwidget(scene[[1]], controllers = c("control_comp"))
          })
   })
-  
+
   output$control_comp <- renderPlaywidget({
     then(morph_target_comparison(),
          function(control){
@@ -498,30 +561,30 @@ server <- function(input, output, session) {
                respondTo = "comp_age", step = .01)
          })
   })
-  
+
   #syndrome comparison reactive####
   syndrome_comps <- eventReactive(input$update_comp, {
     reference <- input$reference
     synd_comp <- input$synd_comp
-    
+
     if(is.null(input$network_selected)) selected.node <- 1 else if(input$network_selected == ""){
       selected.node <- 1} else{
         selected.node <- as.numeric(input$network_selected)}
-    
+
     raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/similarity_scores"),
                              query = list(reference = reference, synd_comp = synd_comp, facial_subregion = selected.node),
                              encode = "json")
-    
+
     json2list <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))
-    
+
     return(list(json2list$wholeface_scores, json2list$subregion_scores))
-    
+
   })
-  
+
   output$morphospace <- renderPlot({
-    
+
     node.code <- c("posterior_mandible" = 2, "nose" = 3,"anterior_mandible" = 4, "brow" = 5, "zygomatic" = 6, "premaxilla" = 7)
-    
+
     if(is.null(input$network_selected)) selected.node <- 1 else if(input$network_selected == ""){
       selected.node <- 1} else{
         selected.node <- as.numeric(input$network_selected)}
@@ -559,7 +622,7 @@ server <- function(input, output, session) {
                        fill = "white")
 
     }
-   
+
     p <- ggplot(morpho.df) +
       geom_point(aes(y = full, x = sub), color = "black") +
       highlighted_points +
@@ -588,134 +651,133 @@ server <- function(input, output, session) {
     plot(g)
 
   })
-  
-  #elements of the face_submission branch####
-  mesh.et.lms <- reactive({
-    future_promise({
-      ex_mesh <- vcgSmooth(file2mesh("~/shiny/shinyapps/Perception/to_bake/da_reg.ply"))
-      sample1k <- sample(1:27903, 200)
-      #register landmarks to the space
-      registered.mesh <- rotmesh.onto(ex_mesh, t(ex_mesh$vb[-4, sample1k]), synd.mshape[sample1k,], scale = T)$mesh
-      
-      shape.tmp <- array(t(registered.mesh$vb[-4,])[atlas$it, ], dim = c(nrow(xyz), 3, 1))
-      values <- geomorph::two.d.array(shape.tmp)
-      
-      col.tmp <- array(211/255, dim = c(nrow(xyz), 3, 1))
-      
-      values_col <- geomorph::two.d.array(col.tmp)
-      
-      
-      combined_values <- t(as.numeric(t(cbind(t(values), t(values_col)))))
-      print(ncol(combined_values))
-   
-      control_combined <- vertexControl(values = combined_values, 
-                                        vertices = c(rep(1:nrow(xyz), each = 6)),
-                                        attributes = c(rep(c("x", "red", "y", "green", "z", "blue"), nrow(xyz))),
-                                        objid = objid)
-      
-      scene <- scene3d()
-      # rgl.close()
-      # return(list(scene, control, control2))
-      return(list(scene, control_combined, registered.mesh))
-    })
-  })
-  
-  output$submitted_face <- renderRglwidget({
-    # 
-    # if(is.null(input$submitted_heatmap)){
-    #   print(shinyGetPar3d("userMatrix", session))
-    # par3d(userMatrix = front.face2, zoom = .75)
-    # plot3d(ex_mesh, col = "lightgrey", axes = F, specular = 1, xlab = "", ylab = "", zlab = "", aspect = "iso")  
-    # rglwidget()
-    # } else if(input$submitted_heatmap == "Compare to syndrome?"){
-    #   #if heatmap, register face, make comp same age?, compare
-    #   selected.sex <- input$current_sex
-    #   selected.age <- input$current_age
-    #   selected.synd <- input$submitted_comp
-    #   
-    #   raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/predshape"),
-    #                            query = list(selected.sex = selected.sex, selected.age = selected.age, selected.synd = selected.synd),
-    #                            encode = "json")
-    #   
-    #   pred.comp <- ex_mesh
-    #   pred.comp$vb[-4,] <- t(jsonlite::fromJSON(httr::content(raw_api_res, "text", encoding = "UTF-8")))/1e10
-    #   
-    #   par3d(userMatrix = front.face2, zoom = .75)
-    #   meshDist(ex_mesh, pred.comp)
-    #   rglwidget()
-    #  
-    #}
-    
-    par3d(userMatrix = front.face2, zoom = .75)
-    then(mesh.et.lms(),
-         function(scene){
-           rglwidget(scene[[1]], controllers = c("submitted_mesh"))
-         })
-  })
-  
-  output$submitted_mesh <- renderPlaywidget({
-    then(mesh.et.lms(),
-         function(control){
-           playwidget("new_mesh", control[[2]]
-                      )
-         })
-  })
-  
-  output$posterior_scree <- renderPlotly({
-    then(mesh.et.lms(),
-         function(mesh){
-            projected.mesh <- getPCscores(t(mesh[[3]]$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
-            # projected.mesh <- getPCscores(t(registered.mesh$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
-            
-            #classify individual's scores using the model
-            # colnames(projected.mesh) <- colnames(PC.scores)
-            
-            posterior.distribution <- predict(hdrda.mod, newdata = projected.mesh, type = "prob")$post
-             
-            posterior.distribution <- sort(posterior.distribution, decreasing = T)
-        
-            #used to be part of plot.df: ID = as.factor(1:10),
-            plot.df <- data.frame(Probs = round(as.numeric(posterior.distribution[1:10]), digits = 4), Syndrome = as.factor(names(posterior.distribution[1:10])))
-            plot.df$Syndrome <- as.character(plot.df$Syndrome)
-            plot.df$Syndrome[plot.df$Syndrome == "Unrelated Unaffected"] <- "Non-syndromic"
-        
-            plot_ly(data = plot.df, x = ~Syndrome, y = ~Probs, type = "bar", color = I("grey"), hoverinfo = paste0("Syndrome: ", "x", "<br>", "Probability: ", "y")) %>%
-              layout(xaxis = list(tickvals = gsub("_", " ", plot.df$Syndrome), tickangle = 45, ticktext = c(Syndrome = plot.df$Syndrome, Probability = plot.df$Probs), title = "<b>Syndrome</b>"),
-                     yaxis = list(title = "<b>Class probability</b>"),
-                     paper_bgcolor='white',
-                     margin = list(b = 125, l = 50, r = 100)
-              )
-         })
-  })
-  
-  output$personal_morphospace <- renderPlotly({
-    then(mesh.et.lms(),
-         function(mesh){
-          projected.mesh <- getPCscores(t(mesh[[3]]$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
-          
-          selected.sex <- input$current_sex
-          selected.age <- input$current_age
-      
-          raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/predPC"),
-                                   query = list(selected.sex = selected.sex, selected.age = selected.age),
-                                   encode = "json")
-      
-          parsed_res <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))/1e10
-          
-          plot.df <- data.frame(Syndrome = c("Submitted mesh", levels(d.meta.combined$Syndrome)), Scores = rbind(projected.mesh[1:2], parsed_res))
-          plot.df$Syndrome <- as.character(plot.df$Syndrome)
-          plot.df$Syndrome[plot.df$Syndrome == "Unrelated Unaffected"] <- "Non-syndromic"
-          
-          plot_ly(data = plot.df, x = ~round(Scores.1, digits = 3), y = ~round(Scores.2,digits = 3), text = ~Syndrome, type = "scatter", marker = list(size = 10), 
-                  mode = "markers+text",
-                  textposition = 'top center', color = I(c(2, rep("#AE80E6", length(unique(d.meta.combined$Syndrome))))), hoverinfo = paste0("PC1 score: ", "x", "<br>", "PC2 score: ", "y")) %>%
-            layout(xaxis = list(title = "<b>PC1 score</b>"),
-                   yaxis = list(title = "<b>PC2 score</b>"),
-                   paper_bgcolor='white',
-                   margin = list(b = 25, l = 25, r = 25, t = 25)
-            )
-         })
-  })
+
+  # #elements of the face_submission branch####
+  # mesh.et.lms <- reactive({
+  #   future_promise({
+  #     ex_mesh <- vcgSmooth(file2mesh("da_reg.ply"))
+  #     sample1k <- sample(1:27903, 200)
+  #     #register landmarks to the space
+  #     registered.mesh <- rotmesh.onto(ex_mesh, t(ex_mesh$vb[-4, sample1k]), synd.mshape[sample1k,], scale = T)$mesh
+  # 
+  #     shape.tmp <- array(t(registered.mesh$vb[-4,])[atlas$it, ], dim = c(nrow(xyz), 3, 1))
+  #     values <- geomorph::two.d.array(shape.tmp)
+  # 
+  #     col.tmp <- array(211/255, dim = c(nrow(xyz), 3, 1))
+  # 
+  #     values_col <- geomorph::two.d.array(col.tmp)
+  # 
+  # 
+  #     combined_values <- t(as.numeric(t(cbind(t(values), t(values_col)))))
+  #     print(ncol(combined_values))
+  # 
+  #     control_combined <- vertexControl(values = combined_values,
+  #                                       vertices = c(rep(1:nrow(xyz), each = 6)),
+  #                                       attributes = c(rep(c("x", "red", "y", "green", "z", "blue"), nrow(xyz))),
+  #                                       objid = objid)
+  # 
+  #     scene <- scene3d()
+  #     # rgl.close()
+  #     # return(list(scene, control, control2))
+  #     return(list(scene, control_combined, registered.mesh))
+  #   })
+  # })
+  # 
+  # output$submitted_face <- renderRglwidget({
+  #   #
+  #   # if(is.null(input$submitted_heatmap)){
+  #   #   print(shinyGetPar3d("userMatrix", session))
+  #   # par3d(userMatrix = front.face2, zoom = .75)
+  #   # plot3d(ex_mesh, col = "lightgrey", axes = F, specular = 1, xlab = "", ylab = "", zlab = "", aspect = "iso")
+  #   # rglwidget()
+  #   # } else if(input$submitted_heatmap == "Compare to syndrome?"){
+  #   #   #if heatmap, register face, make comp same age?, compare
+  #   #   selected.sex <- input$current_sex
+  #   #   selected.age <- input$current_age
+  #   #   selected.synd <- input$submitted_comp
+  #   #
+  #   #   raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/predshape"),
+  #   #                            query = list(selected.sex = selected.sex, selected.age = selected.age, selected.synd = selected.synd),
+  #   #                            encode = "json")
+  #   #
+  #   #   pred.comp <- ex_mesh
+  #   #   pred.comp$vb[-4,] <- t(jsonlite::fromJSON(httr::content(raw_api_res, "text", encoding = "UTF-8")))/1e10
+  #   #
+  #   #   par3d(userMatrix = front.face2, zoom = .75)
+  #   #   meshDist(ex_mesh, pred.comp)
+  #   #   rglwidget()
+  #   #
+  #   #}
+  # 
+  #   par3d(userMatrix = front.face2, zoom = .75)
+  #   then(mesh.et.lms(),
+  #        function(scene){
+  #          rglwidget(scene[[1]], controllers = c("submitted_mesh"))
+  #        })
+  # })
+  # 
+  # output$submitted_mesh <- renderPlaywidget({
+  #   then(mesh.et.lms(),
+  #        function(control){
+  #          playwidget("new_mesh", control[[2]])
+  #        })
+  # })
+  # 
+  # output$posterior_scree <- renderPlotly({
+  #   then(mesh.et.lms(),
+  #        function(mesh){
+  #           projected.mesh <- getPCscores(t(mesh[[3]]$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
+  #           # projected.mesh <- getPCscores(t(registered.mesh$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
+  #           
+  #           #classify individual's scores using the model
+  #           # colnames(projected.mesh) <- colnames(PC.scores)
+  #           
+  #           posterior.distribution <- predict(hdrda.mod, newdata = projected.mesh, type = "prob")$post
+  #            
+  #           posterior.distribution <- sort(posterior.distribution, decreasing = T)
+  #       
+  #           #used to be part of plot.df: ID = as.factor(1:10),
+  #           plot.df <- data.frame(Probs = round(as.numeric(posterior.distribution[1:10]), digits = 4), Syndrome = as.factor(names(posterior.distribution[1:10])))
+  #           plot.df$Syndrome <- as.character(plot.df$Syndrome)
+  #           plot.df$Syndrome[plot.df$Syndrome == "Unrelated Unaffected"] <- "Non-syndromic"
+  #       
+  #           plot_ly(data = plot.df, x = ~Syndrome, y = ~Probs, type = "bar", color = I("grey"), hoverinfo = paste0("Syndrome: ", "x", "<br>", "Probability: ", "y")) %>%
+  #             layout(xaxis = list(tickvals = gsub("_", " ", plot.df$Syndrome), tickangle = 45, ticktext = c(Syndrome = plot.df$Syndrome, Probability = plot.df$Probs), title = "<b>Syndrome</b>"),
+  #                    yaxis = list(title = "<b>Class probability</b>"),
+  #                    paper_bgcolor='white',
+  #                    margin = list(b = 125, l = 50, r = 100)
+  #             )
+  #        })
+  # })
+  # 
+  # output$personal_morphospace <- renderPlotly({
+  #   then(mesh.et.lms(),
+  #        function(mesh){
+  #         projected.mesh <- getPCscores(t(mesh[[3]]$vb[-4,]), PC.eigenvectors, synd.mshape)[1:200]
+  #         
+  #         selected.sex <- input$current_sex
+  #         selected.age <- input$current_age
+  #     
+  #         raw_api_res <- httr::GET(url = paste0("http://localhost:3636", "/predPC"),
+  #                                  query = list(selected.sex = selected.sex, selected.age = selected.age),
+  #                                  encode = "json")
+  #     
+  #         parsed_res <- jsonlite::fromJSON(httr::content(raw_api_res, "text"))/1e10
+  #         
+  #         plot.df <- data.frame(Syndrome = c("Submitted mesh", levels(d.meta.combined$Syndrome)), Scores = rbind(projected.mesh[1:2], parsed_res))
+  #         plot.df$Syndrome <- as.character(plot.df$Syndrome)
+  #         plot.df$Syndrome[plot.df$Syndrome == "Unrelated Unaffected"] <- "Non-syndromic"
+  #         
+  #         plot_ly(data = plot.df, x = ~round(Scores.1, digits = 3), y = ~round(Scores.2,digits = 3), text = ~Syndrome, type = "scatter", marker = list(size = 10), 
+  #                 mode = "markers+text",
+  #                 textposition = 'top center', color = I(c(2, rep("#AE80E6", length(unique(d.meta.combined$Syndrome))))), hoverinfo = paste0("PC1 score: ", "x", "<br>", "PC2 score: ", "y")) %>%
+  #           layout(xaxis = list(title = "<b>PC1 score</b>"),
+  #                  yaxis = list(title = "<b>PC2 score</b>"),
+  #                  paper_bgcolor='white',
+  #                  margin = list(b = 25, l = 25, r = 25, t = 25)
+  #           )
+  #        })
+  # })
 }
 
 shinyApp(ui = ui, server = server)

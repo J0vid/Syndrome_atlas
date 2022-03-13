@@ -140,11 +140,11 @@ objid <- ids3d()$id
 xyz <- rgl.attrib(objid[1], "vertices")
 dim(xyz)
 
-nframes <- 50
+age_vec <- c(1,50)
 
-values <- matrix(NA, ncol = nrow(xyz) * 3, nrow = nframes)
-for(i in 1:nframes){
-  selected.age <- i
+values <- matrix(NA, ncol = nrow(xyz) * 3, nrow = 2)
+for(i in 1:2){
+  selected.age <- age_vec[i]
   selected.sex <- -2
   datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
   predicted.shape <- predshape.lm(synd.lm.coefs, datamod, d.registered$PCs[,1:num_pcs], d.registered$mshape)
@@ -195,7 +195,7 @@ control2 <- vertexControl(values = values2,
                           param = 1:nrow(values2))
 
 rglwidget(width = 500, height = 500) %>%
-  playwidget(control, step = 1)
+  playwidget(control, step = .001)
 
 
 #combined controller hack####
@@ -438,6 +438,69 @@ control <- vertexControl(values = test2,
 
 rglwidget(width = 500, height = 500) %>%
   playwidget(control, step = .001)
+
+
+
+#
+
+
+#do it with mesh####
+library(Morpho)
+library(rgl)
+library(Rvcg)
+
+setwd("~/shiny/shinyapps/Syndrome_model/")
+load("data.Rdata")
+
+predshape.lm <- function(fit, datamod, PC, mshape){
+  dims <- dim(mshape)
+  mat <- model.matrix(datamod)
+  pred <- mat %*% fit
+  
+  predPC <- (PC %*% t(pred))
+  out <- mshape + matrix(predPC, dims[1], dims[2], byrow = F)
+  
+  return(out * 1e10)
+}
+
+
+
+close3d()
+
+selected.synd <- factor("Achondroplasia", levels = levels(d.meta.combined$Syndrome))
+selected.sex <-1
+selected.age <- 1
+datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+predicted.shape <- predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)/1e10
+
+atlas$vb[-4,] <- t(predicted.shape)
+
+open3d()
+shade3d(vcgSmooth(atlas), aspect = "iso", col = "lightgrey", specular = 1)
+objid <- ids3d()$id
+xyz <- rgl.attrib(objid[1], "vertices")
+dim(xyz)
+#calc age vector values
+
+age.vec <- c(1, 35)
+values3d <- array(NA, dim = c(nrow(xyz), 3, 2))
+for(i in 1:2){
+  selected.age <- age.vec[i]
+  
+  datamod <- ~ selected.sex + selected.age + selected.age^2 + selected.age^3 + selected.synd + selected.age:selected.synd
+  values3d[,,i] <- (predshape.lm(synd.lm.coefs, datamod, PC.eigenvectors, synd.mshape)/1e10)[as.numeric(atlas$it),]
+}
+
+num <- which(duplicated(as.numeric(atlas$it)) == F)
+values <- two.d.array(values3d[num,,])
+
+rglwidget(width = 500, height = 500) %>%
+  playwidget(vertexControl(values = values, 
+                           vertices = rep(num, each = 3),
+                           attributes = rep(c("x", "y", "z"), length(num)),
+                           objid = objid,
+                           param = 1:2), step = 1/58)
+
 
 
 
